@@ -1,0 +1,148 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  PROF
+  STUDENT
+}
+
+enum SeanceStatus {
+  PLANNED
+  OPEN
+  CLOSED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+}
+
+enum AttendanceSource {
+  QR
+  MANUAL
+}
+
+model User {
+  id            String     @id @default(cuid())
+  email         String     @unique
+  passwordHash  String
+  firstName     String
+  lastName      String
+  role          UserRole   @default(STUDENT)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  // Relations
+  professedSeances Seance[]       @relation("Professor")
+  enrollments      Enrollment[]
+  attendances      Attendance[]
+
+  @@map("users")
+}
+
+model Filiere {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  groupes  Groupe[]
+  modules  Module[]
+
+  @@map("filieres")
+}
+
+model Groupe {
+  id        String   @id @default(cuid())
+  name      String
+  filiereId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  filiere   Filiere     @relation(fields: [filiereId], references: [id], onDelete: Cascade)
+  enrollments Enrollment[]
+  seances   Seance[]
+
+  @@unique([name, filiereId])
+  @@map("groupes")
+}
+
+model Module {
+  id        String   @id @default(cuid())
+  name      String
+  filiereId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  filiere Filiere @relation(fields: [filiereId], references: [id], onDelete: Cascade)
+  seances Seance[]
+
+  @@unique([name, filiereId])
+  @@map("modules")
+}
+
+model Enrollment {
+  id        String   @id @default(cuid())
+  studentId String
+  groupeId  String
+  createdAt DateTime @default(now())
+
+  // Relations
+  student User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  groupe  Groupe @relation(fields: [groupeId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, groupeId])
+  @@map("enrollments")
+}
+
+model Seance {
+  id           String        @id @default(cuid())
+  moduleId     String
+  professorId  String
+  groupeId     String
+  startsAt     DateTime
+  endsAt       DateTime
+  room         String
+  status       SeanceStatus  @default(PLANNED)
+  qrSecret     String?       // Random secret for QR validation
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  // Relations
+  module       Module        @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  professor    User          @relation("Professor", fields: [professorId], references: [id], onDelete: Cascade)
+  groupe       Groupe        @relation(fields: [groupeId], references: [id], onDelete: Cascade)
+  attendances  Attendance[]
+
+  @@map("seances")
+}
+
+model Attendance {
+  id        String             @id @default(cuid())
+  seanceId  String
+  studentId String
+  status    AttendanceStatus
+  source    AttendanceSource   @default(QR)
+  markedAt  DateTime           @default(now())
+  createdAt DateTime           @default(now())
+
+  // Relations
+  seance    Seance             @relation(fields: [seanceId], references: [id], onDelete: Cascade)
+  student   User               @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([seanceId, studentId])
+  @@map("attendances")
+}
