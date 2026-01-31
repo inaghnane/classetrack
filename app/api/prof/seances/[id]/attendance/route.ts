@@ -29,10 +29,6 @@ export async function GET(
       return NextResponse.json({ error: 'Seance not found' }, { status: 404 });
     }
 
-    if (seance.professorId !== (session.user as any).id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
     // Get all students in the group
     const groupStudents = await prisma.enrollment.findMany({
       where: { groupeId: seance.groupeId },

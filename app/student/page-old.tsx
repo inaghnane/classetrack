@@ -1,0 +1,387 @@
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import dynamic from 'next/dynamic';
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
+import Header from '@/components/Header';
+import OfflineSyncBanner from '@/components/OfflineSyncBanner';
+import { getOrCreateDeviceId } from '@/lib/device';
+
+interface Seance {
+  id: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  status: string;
+  groupeName: string;
+  groupeId: string;
+}
+
+interface Module {
+  id: string;
+  name: string;
+  code: string;
+  seances: Seance[];
+}
+
+interface HierarchyData {
+  filiere: {
+    id: string;
+    name: string;
+    code: string;
+  };
+  modules: Module[];
+}
+
+export default function StudentPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  
+  // Hierarchical navigation state
+  const [hierarchyData, setHierarchyData] = useState<HierarchyData | null>(null);
+  const [selectedModule, setSelectedModule] = useState<Module | null>(null);
+  const [selectedSeanceForScan, setSelectedSeanceForScan] = useState<Seance | null>(null);
+  
+  // Old states for compatibility
+  const [attendance, setAttendance] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState('modules');
+  const [showScanner, setShowScanner] = useState(false);
+  const [tokenInput, setTokenInput] = useState('');
+  const [message, setMessage] = useState<{ type: string; text: string } | null>(null);
+  const [deviceId, setDeviceId] = useState<string>('');
+  const [isClient, setIsClient] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const QrScanner = dynamic(() => import('@yudiel/react-qr-scanner').then((m) => m.QrScanner), {
+    ssr: false,
+  });
+  const [showCamera, setShowCamera] = useState(false);
+
+  useEffect(() => {
+    // Obtenir ou créer le device ID au chargement (côté client seulement)
+    setIsClient(true);
+    try {
+      const id = getOrCreateDeviceId();
+      setDeviceId(id);
+    } catch (error) {
+      console.error('Device ID error:', error);
+      // Continue sans device ID si erreur
+    }
+  }, []);
+
+  const fetchHierarchy = async () => {
+    const res = await fetch('/api/student/hierarchy');
+    const data = await res.json();
+    setHierarchyData(data);
+  };
+
+  const fetchAttendance = async () => {
+    const res = await fetch('/api/student/attendance');
+    const data = await res.json();
+    setAttendance(data);
+  };
+
+  const handleScan = async () => {
+    if (!selectedSeanceForScan || !tokenInput) {
+      setMessage({ type: 'error', text: 'Saisir le token QR' });
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/student/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          seanceId: selectedSeanceForScan.id,
+          token: tokenInput,
+          scannedAt: new Date(),
+          deviceId, // Envoyer le device ID pour vérifier la restriction
+        }),
+      });
+
+      if (res.ok) {
+        setMessage({ type: 'success', text: '✅ Présence marquée!' });
+        setTokenInput('');
+        setSelectedSeanceForScan(null);
+        setShowScanner(false);
+        fetchHierarchy();
+        fetchAttendance();
+      } else {
+        const error = await res.json();
+        setMessage({
+          type: 'error',
+          text: error.error || 'Erreur lors du scan',
+        });
+      }
+    } catch (error) {
+      // Offline mode - store in localStorage
+      const queue = JSON.parse(localStorage.getItem('scanQueue') || '[]');
+      queue.push({
+        id: Math.random().toString(),
+        seanceId: selectedSeanceForScan.id,
+        token: tokenInput,
+        timestamp: Date.now(),
+      });
+      localStorage.setItem('scanQueue', JSON.stringify(queue));
+      setMessage({
+        type: 'warning',
+        text: 'Mode offline - Scan sauvegardé localement',
+      });
+      setTokenInput('');
+      setShowScanner(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchHierarchy();
+    fetchAttendance();
+  }, []);
+
+  if (status === 'loading') {
+    return <div className="flex items-center justify-center min-h-screen">Chargement...</div>;
+  }
+
+  if (status === 'unauthenticated' || (session?.user as any)?.role !== 'STUDENT') {
+    router.push('/login');
+    return null;
+  }
+
+  const openseance = seance.filter((s) => s.status === 'OPEN');
+  const markedseance = attendance.map((a) => a.seanceId);
+
+  return (
+    <>
+      <Header />
+      <OfflineSyncBanner />
+
+      <main className="container">
+        <h1 className="text-3xl font-bold mb-6">Mes Séances</h1>
+
+        {message && (
+          <div
+            className={`mb-4 p-4 rounded border-l-4 ${
+              message.type === 'success'
+                ? 'bg-green-100 border-green-500 text-green-700'
+                : message.type === 'warning'
+                ? 'bg-yellow-100 border-yellow-500 text-yellow-700'
+                : 'bg-red-100 border-red-500 text-red-700'
+            }`}
+          >
+            {message.text}
+          </div>
+        )}
+
+        <div className="flex gap-4 mb-6 border-b">
+          <button
+            onClick={() => setActiveTab('seance')}
+            className={`px-4 py-2 font-semibold ${
+              activeTab === 'seance'
+                ? 'border-b-2 border-blue-600 text-blue-600'
+                : 'text-gray-600'
+            }`}
+          >
+            Mes Séances
+          </button>
+          <button
+            onClick={() => setActiveTab('historique')}
+            className={`px-4 py-2 font-semibold ${
+              activeTab === 'historique'
+                ? 'border-b-2 border-blue-600 text-blue-600'
+                : 'text-gray-600'
+            }`}
+          >
+            Historique
+          </button>
+        </div>
+
+        {activeTab === 'seance' && (
+          <div>
+            <div className="mb-6">
+              {openseance.length > 0 && (
+                <div className="card mb-4 bg-blue-50">
+                  <h3 className="font-bold text-blue-900 mb-2">
+                    Séances ouvertes ({openseance.length})
+                  </h3>
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      onClick={() => setShowScanner(!showScanner)}
+                      className="btn-primary"
+                    >
+                      {showScanner ? '✕ Fermer' : '📱 Scanner présence'}
+                    </button>
+                  </div>
+
+                  {showScanner && (
+                    <div className="mt-4 p-4 bg-white rounded space-y-4">
+                      <div className="mb-4">
+                        <label className="block font-semibold mb-2">
+                          Sélectionner séance
+                        </label>
+                        <select
+                          value={selectedSeance}
+                          onChange={(e) => setSelectedSeance(e.target.value)}
+                          className="input-field"
+                        >
+                          <option value="">-- Choisir --</option>
+                          {openseance.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.module.name} ({s.groupe.name}) - {new Date(s.date).toLocaleDateString('fr-FR')} {s.startTime}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Méthode 1: Scan caméra (PRINCIPALE) */}
+                      <div className="p-3 bg-green-50 rounded border-2 border-green-400">
+                        <label className="block font-bold mb-2 text-green-900">
+                          📷 Méthode 1: Scanner le QR avec caméra (recommandé)
+                        </label>
+                        {showCamera ? (
+                          <>
+                            <div className="rounded overflow-hidden border-2 border-gray-200 mb-2">
+                              <QrScanner
+                                onDecode={(result) => {
+                                  const value = Array.isArray(result) ? result[0] : result;
+                                  if (value) {
+                                    setTokenInput(value);
+                                    setMessage({ type: 'success', text: 'QR scanné! Cliquez sur Marquer présence.' });
+                                  }
+                                }}
+                                onError={(err) => {
+                                  console.error(err);
+                                  setMessage({ type: 'warning', text: 'Caméra indisponible. Utilisez la copie/colle.' });
+                                }}
+                                constraints={{ facingMode: 'environment' }}
+                                scanDelay={800}
+                                style={{ width: '100%' }}
+                              />
+                            </div>
+                            <button
+                              onClick={() => setShowCamera(false)}
+                              className="w-full btn-secondary"
+                            >
+                              ✕ Fermer caméra
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => setShowCamera(true)}
+                            className="w-full btn-primary"
+                          >
+                            Appuyer pour activer caméra
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Méthode 2: Saisie manuelle (fallback) */}
+                      <div className="p-3 bg-gray-50 rounded border border-gray-300">
+                        <label className="block font-semibold mb-2 text-gray-700">
+                          Ou saisir le token manuellement
+                        </label>
+                        <input
+                          type="text"
+                          value={tokenInput}
+                          onChange={(e) => setTokenInput(e.target.value)}
+                          placeholder="Copier/coller le token affiché par le professeur"
+                          className="input-field font-mono text-sm"
+                        />
+                        <p className="text-xs text-gray-600 mt-1">
+                          💡 Si la caméra ne marche pas, demandez au prof de geler le QR
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={handleScan}
+                        className="w-full btn-primary font-bold py-3"
+                      >
+                        ✓ Marquer présence
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {seance.map((seance) => {
+                const isMarked = markedseance.includes(seance.id);
+                return (
+                  <div
+                    key={seance.id}
+                    className={`card ${
+                      isMarked ? 'bg-green-50 border-2 border-green-300' : ''
+                    }`}
+                  >
+                    <h3 className="font-bold text-lg mb-2">{seance.module.name}</h3>
+                    <p className="text-sm text-gray-600 mb-1">
+                      Groupe: {seance.groupe.name}
+                    </p>
+                    <p className="text-sm text-gray-600 mb-1">
+                      Date: {new Date(seance.date).toLocaleDateString('fr-FR')}
+                    </p>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Horaire: {seance.startTime} - {seance.endTime}
+                    </p>
+
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={`px-3 py-1 rounded text-sm font-semibold ${
+                          seance.status === 'OPEN'
+                            ? 'bg-green-100 text-green-800'
+                            : seance.status === 'CLOSED'
+                            ? 'bg-gray-100 text-gray-800'
+                            : 'bg-blue-100 text-blue-800'
+                        }`}
+                      >
+                        {seance.status}
+                      </span>
+                      {isMarked && (
+                        <span className="text-green-700 font-bold">✓ Présent</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'historique' && (
+          <div>
+            <h2 className="font-bold text-xl mb-4">Historique de Présence</h2>
+            <div className="space-y-2">
+              {attendance.length === 0 ? (
+                <p className="text-gray-600">Aucune présence enregistrée</p>
+              ) : (
+                attendance.map((att) => (
+                  <div key={att.id} className="card">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="font-bold">{att.seance.module.name}</h4>
+                        <p className="text-sm text-gray-600">
+                          {att.seance.groupe.name}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {new Date(att.createdAt).toLocaleString('fr-FR')}
+                        </p>
+                      </div>
+                      <span
+                        className={`px-3 py-1 rounded font-bold ${
+                          att.status === 'PRESENT'
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}
+                      >
+                        {att.status === 'PRESENT' ? 'Présent' : 'Absent'}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+      </main>
+    </>
+  );
+}

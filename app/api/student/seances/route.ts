@@ -33,11 +33,8 @@ export async function GET(request: NextRequest) {
     include: {
       module: true,
       groupe: true,
-      professor: {
-        select: { firstName: true, lastName: true, email: true },
-      },
     },
-    orderBy: { startsAt: 'asc' },
+    orderBy: { date: 'asc' },
   });
 
   return NextResponse.json(seances);

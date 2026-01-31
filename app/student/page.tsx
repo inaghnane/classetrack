@@ -1,32 +1,80 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import OfflineSyncBanner from '@/components/OfflineSyncBanner';
+import { getOrCreateDeviceId } from '@/lib/device';
+
+interface Seance {
+  id: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  status: string;
+  groupeName: string;
+  groupeId: string;
+}
+
+interface Module {
+  id: string;
+  name: string;
+  code: string;
+  seances: Seance[];
+}
+
+interface HierarchyData {
+  filiere: {
+    id: string;
+    name: string;
+    code: string;
+  };
+  modules: Module[];
+}
 
 export default function StudentPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const [seances, setSeances] = useState<any[]>([]);
+  
+  // Hierarchical navigation state
+  const [hierarchyData, setHierarchyData] = useState<HierarchyData | null>(null);
+  const [selectedModule, setSelectedModule] = useState<Module | null>(null);
+  const [selectedSeanceForScan, setSelectedSeanceForScan] = useState<Seance | null>(null);
+  
+  // States
   const [attendance, setAttendance] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState('seances');
+  const [justifications, setJustifications] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState('modules');
   const [showScanner, setShowScanner] = useState(false);
+  const [showJustificationModal, setShowJustificationModal] = useState(false);
+  const [selectedSeanceForJustif, setSelectedSeanceForJustif] = useState<Seance | null>(null);
+  const [justificationReason, setJustificationReason] = useState('');
+  const [justificationFile, setJustificationFile] = useState<File | null>(null);
   const [tokenInput, setTokenInput] = useState('');
-  const [selectedSeance, setSelectedSeance] = useState<string>('');
   const [message, setMessage] = useState<{ type: string; text: string } | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const [deviceId, setDeviceId] = useState<string>('');
+  const [isClient, setIsClient] = useState(false);
   const QrScanner = dynamic(() => import('@yudiel/react-qr-scanner').then((m) => m.QrScanner), {
     ssr: false,
   });
   const [showCamera, setShowCamera] = useState(false);
 
-  const fetchSeances = async () => {
-    const res = await fetch('/api/student/seances');
+  useEffect(() => {
+    setIsClient(true);
+    try {
+      const id = getOrCreateDeviceId();
+      setDeviceId(id);
+    } catch (error) {
+      console.error('Device ID error:', error);
+    }
+  }, []);
+
+  const fetchHierarchy = async () => {
+    const res = await fetch('/api/student/hierarchy');
     const data = await res.json();
-    setSeances(data);
+    setHierarchyData(data);
   };
 
   const fetchAttendance = async () => {
@@ -35,9 +83,57 @@ export default function StudentPage() {
     setAttendance(data);
   };
 
+  const fetchJustifications = async () => {
+    const res = await fetch('/api/student/justification');
+    const data = await res.json();
+    setJustifications(data);
+  };
+
+  const handleSubmitJustification = async () => {
+    if (!selectedSeanceForJustif || !justificationReason.trim()) {
+      setMessage({ type: 'error', text: 'Veuillez saisir une raison' });
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append('seanceId', selectedSeanceForJustif.id);
+      formData.append('reason', justificationReason);
+      if (justificationFile) {
+        formData.append('file', justificationFile);
+      }
+
+      const res = await fetch('/api/student/justification', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (res.ok) {
+        setMessage({ type: 'success', text: '✅ Justificatif soumis avec succès!' });
+        setJustificationReason('');
+        setJustificationFile(null);
+        setSelectedSeanceForJustif(null);
+        setShowJustificationModal(false);
+        fetchJustifications();
+      } else {
+        const error = await res.json();
+        setMessage({
+          type: 'error',
+          text: error.error || 'Erreur lors de la soumission',
+        });
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      setMessage({
+        type: 'error',
+        text: 'Erreur de connexion',
+      });
+    }
+  };
+
   const handleScan = async () => {
-    if (!selectedSeance || !tokenInput) {
-      setMessage({ type: 'error', text: 'Saisir le token QR et sélectionner une séance' });
+    if (!selectedSeanceForScan || !tokenInput) {
+      setMessage({ type: 'error', text: 'Saisir le token QR' });
       return;
     }
 
@@ -46,18 +142,20 @@ export default function StudentPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          seanceId: selectedSeance,
+          seanceId: selectedSeanceForScan.id,
           token: tokenInput,
           scannedAt: new Date(),
+          deviceId,
         }),
       });
 
       if (res.ok) {
-        setMessage({ type: 'success', text: 'Présence marquée!' });
+        setMessage({ type: 'success', text: '✅ Présence marquée!' });
         setTokenInput('');
-        setSelectedSeance('');
+        setSelectedSeanceForScan(null);
         setShowScanner(false);
-        fetchSeances();
+        setShowCamera(false);
+        fetchHierarchy();
         fetchAttendance();
       } else {
         const error = await res.json();
@@ -67,11 +165,10 @@ export default function StudentPage() {
         });
       }
     } catch (error) {
-      // Offline mode - store in localStorage
       const queue = JSON.parse(localStorage.getItem('scanQueue') || '[]');
       queue.push({
         id: Math.random().toString(),
-        seanceId: selectedSeance,
+        seanceId: selectedSeanceForScan.id,
         token: tokenInput,
         timestamp: Date.now(),
       });
@@ -86,8 +183,9 @@ export default function StudentPage() {
   };
 
   useEffect(() => {
-    fetchSeances();
+    fetchHierarchy();
     fetchAttendance();
+    fetchJustifications();
   }, []);
 
   if (status === 'loading') {
@@ -99,8 +197,12 @@ export default function StudentPage() {
     return null;
   }
 
-  const openSeances = seances.filter((s) => s.status === 'OPEN');
-  const markedSeances = attendance.map((a) => a.seanceId);
+  const presentSeanceIds = attendance
+    .filter((a) => a.status === 'PRESENT')
+    .map((a) => a.seanceId);
+  const absentSeanceIds = attendance
+    .filter((a) => a.status === 'ABSENT')
+    .map((a) => a.seanceId);
 
   return (
     <>
@@ -109,6 +211,25 @@ export default function StudentPage() {
 
       <main className="container">
         <h1 className="text-3xl font-bold mb-6">Mes Séances</h1>
+
+        {/* Breadcrumb */}
+        {hierarchyData && (
+          <div className="mb-6 flex gap-2 items-center text-sm">
+            <button
+              onClick={() => setSelectedModule(null)}
+              className="text-blue-600 hover:underline font-semibold"
+            >
+              {hierarchyData.filiere.name}
+            </button>
+            
+            {selectedModule && (
+              <>
+                <span>→</span>
+                <span className="font-semibold">{selectedModule.name}</span>
+              </>
+            )}
+          </div>
+        )}
 
         {message && (
           <div
@@ -126,14 +247,17 @@ export default function StudentPage() {
 
         <div className="flex gap-4 mb-6 border-b">
           <button
-            onClick={() => setActiveTab('seances')}
+            onClick={() => {
+              setActiveTab('modules');
+              setSelectedModule(null);
+            }}
             className={`px-4 py-2 font-semibold ${
-              activeTab === 'seances'
+              activeTab === 'modules'
                 ? 'border-b-2 border-blue-600 text-blue-600'
                 : 'text-gray-600'
             }`}
           >
-            Mes Séances
+            Mes Modules
           </button>
           <button
             onClick={() => setActiveTab('historique')}
@@ -145,193 +269,292 @@ export default function StudentPage() {
           >
             Historique
           </button>
+          <button
+            onClick={() => setActiveTab('justificatifs')}
+            className={`px-4 py-2 font-semibold ${
+              activeTab === 'justificatifs'
+                ? 'border-b-2 border-blue-600 text-blue-600'
+                : 'text-gray-600'
+            }`}
+          >
+            Justificatifs
+          </button>
         </div>
 
-        {activeTab === 'seances' && (
+        {activeTab === 'modules' && hierarchyData && (
           <div>
-            <div className="mb-6">
-              {openSeances.length > 0 && (
-                <div className="card mb-4 bg-blue-50">
-                  <h3 className="font-bold text-blue-900 mb-2">
-                    Séances ouvertes ({openSeances.length})
-                  </h3>
-                  <div className="flex gap-2 flex-wrap">
-                    <button
-                      onClick={() => setShowScanner(!showScanner)}
-                      className="btn-primary"
-                    >
-                      {showScanner ? '✕ Fermer' : '📱 Scanner présence'}
-                    </button>
-                  </div>
-
-                  {showScanner && (
-                    <div className="mt-4 p-4 bg-white rounded space-y-4">
-                      <div className="mb-4">
-                        <label className="block font-semibold mb-2">
-                          Sélectionner séance
-                        </label>
-                        <select
-                          value={selectedSeance}
-                          onChange={(e) => setSelectedSeance(e.target.value)}
-                          className="input-field"
-                        >
-                          <option value="">-- Choisir --</option>
-                          {openSeances.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.module.name} ({s.groupe.name}) - Prof. {s.professor.firstName}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Méthode 1: Scan caméra (PRINCIPALE) */}
-                      <div className="p-3 bg-green-50 rounded border-2 border-green-400">
-                        <label className="block font-bold mb-2 text-green-900">
-                          📷 Méthode 1: Scanner le QR avec caméra (recommandé)
-                        </label>
-                        {showCamera ? (
-                          <>
-                            <div className="rounded overflow-hidden border-2 border-gray-200 mb-2">
-                              <QrScanner
-                                onDecode={(result) => {
-                                  const value = Array.isArray(result) ? result[0] : result;
-                                  if (value) {
-                                    setTokenInput(value);
-                                    setMessage({ type: 'success', text: 'QR scanné! Cliquez sur Marquer présence.' });
-                                  }
-                                }}
-                                onError={(err) => {
-                                  console.error(err);
-                                  setMessage({ type: 'warning', text: 'Caméra indisponible. Utilisez la copie/colle.' });
-                                }}
-                                constraints={{ facingMode: 'environment' }}
-                                scanDelay={800}
-                                style={{ width: '100%' }}
-                              />
-                            </div>
-                            <button
-                              onClick={() => setShowCamera(false)}
-                              className="w-full btn-secondary"
-                            >
-                              ✕ Fermer caméra
-                            </button>
-                          </>
-                        ) : (
-                          <button
-                            onClick={() => setShowCamera(true)}
-                            className="w-full btn-primary"
-                          >
-                            Appuyer pour activer caméra
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Méthode 2: Saisie manuelle (fallback) */}
-                      <div className="p-3 bg-gray-50 rounded border border-gray-300">
-                        <label className="block font-semibold mb-2 text-gray-700">
-                          Ou saisir le token manuellement
-                        </label>
-                        <input
-                          type="text"
-                          value={tokenInput}
-                          onChange={(e) => setTokenInput(e.target.value)}
-                          placeholder="Copier/coller le token affiché par le professeur"
-                          className="input-field font-mono text-sm"
-                        />
-                        <p className="text-xs text-gray-600 mt-1">
-                          💡 Si la caméra ne marche pas, demandez au prof de geler le QR
-                        </p>
-                      </div>
-
-                      <button
-                        onClick={handleScan}
-                        className="w-full btn-primary font-bold py-3"
+            {!selectedModule ? (
+              /* Module Selection */
+              <div>
+                <h2 className="text-xl font-bold mb-4">
+                  {hierarchyData.filiere.name} - Tous les modules
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {hierarchyData.modules.map((module) => {
+                    const openSeances = module.seances.filter((s) => s.status === 'OPEN');
+                    return (
+                      <div
+                        key={module.id}
+                        onClick={() => setSelectedModule(module)}
+                        className="card cursor-pointer hover:shadow-lg transition-shadow"
                       >
-                        ✓ Marquer présence
-                      </button>
-                    </div>
-                  )}
+                        <h3 className="font-bold text-lg mb-2">{module.name}</h3>
+                        <p className="text-sm text-gray-600 mb-3">Code: {module.code}</p>
+                        <div className="flex gap-2 text-xs flex-wrap">
+                          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded">
+                            {module.seances.length} séance(s)
+                          </span>
+                          {openSeances.length > 0 && (
+                            <span className="px-2 py-1 bg-green-100 text-green-700 rounded font-semibold">
+                              🟢 {openSeances.length} en cours
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              /* Seance List */
+              <div>
+                <button
+                  onClick={() => setSelectedModule(null)}
+                  className="btn-secondary mb-4"
+                >
+                  ← Retour aux modules
+                </button>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {seances.map((seance) => {
-                const isMarked = markedSeances.includes(seance.id);
-                return (
-                  <div
-                    key={seance.id}
-                    className={`card ${
-                      isMarked ? 'bg-green-50 border-2 border-green-300' : ''
-                    }`}
-                  >
-                    <h3 className="font-bold text-lg mb-2">{seance.module.name}</h3>
-                    <p className="text-sm text-gray-600 mb-1">
-                      Groupe: {seance.groupe.name}
-                    </p>
-                    <p className="text-sm text-gray-600 mb-1">
-                      Prof: {seance.professor.firstName} {seance.professor.lastName}
-                    </p>
-                    <p className="text-sm text-gray-600 mb-1">
-                      Salle: {seance.room}
-                    </p>
-                    <p className="text-sm text-gray-600 mb-4">
-                      {new Date(seance.startsAt).toLocaleString('fr-FR')}
-                    </p>
+                <h2 className="text-xl font-bold mb-4">
+                  {selectedModule.name} - Toutes les séances
+                </h2>
 
-                    <div className="flex items-center justify-between">
-                      <span
-                        className={`px-3 py-1 rounded text-sm font-semibold ${
-                          seance.status === 'OPEN'
-                            ? 'bg-green-100 text-green-800'
-                            : seance.status === 'CLOSED'
-                            ? 'bg-gray-100 text-gray-800'
-                            : 'bg-blue-100 text-blue-800'
-                        }`}
-                      >
-                        {seance.status}
-                      </span>
-                      {isMarked && (
-                        <span className="text-green-700 font-bold">✓ Présent</span>
-                      )}
-                    </div>
+                {selectedModule.seances.length === 0 ? (
+                  <p className="text-gray-500">Aucune séance disponible pour ce module.</p>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4">
+                    {selectedModule.seances.map((seance) => {
+                      const isPresent = presentSeanceIds.includes(seance.id);
+                      const isAbsent = absentSeanceIds.includes(seance.id);
+                      const isOpen = seance.status === 'OPEN';
+                      
+                      return (
+                        <div
+                          key={seance.id}
+                          className={`card ${isOpen ? 'border-2 border-green-500' : ''} ${
+                            isPresent ? 'bg-green-50' : isAbsent ? 'bg-red-50' : ''
+                          }`}
+                        >
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <h3 className="font-bold text-lg">
+                                {new Date(seance.date).toLocaleDateString('fr-FR')}
+                              </h3>
+                              <p className="text-sm text-gray-600">
+                                {seance.startTime} - {seance.endTime}
+                              </p>
+                              <p className="text-sm text-gray-500 mt-1">
+                                Groupe: {seance.groupeName}
+                              </p>
+                            </div>
+                            <div className="flex flex-col gap-2 items-end">
+                              <span
+                                className={`text-xs font-semibold px-3 py-1 rounded ${
+                                  isOpen
+                                    ? 'bg-green-100 text-green-700'
+                                    : 'bg-gray-100 text-gray-700'
+                                }`}
+                              >
+                                {isOpen ? '🟢 EN COURS' : '⚫ FERMÉE'}
+                              </span>
+                              {isPresent && (
+                                <span className="text-xs font-semibold px-3 py-1 rounded bg-green-200 text-green-900">
+                                  ✅ Présent
+                                </span>
+                              )}
+                              {isAbsent && (
+                                <span className="text-xs font-semibold px-3 py-1 rounded bg-red-200 text-red-900">
+                                  ❌ Absent
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {isOpen && !isPresent && (
+                            <button
+                              onClick={() => {
+                                setSelectedSeanceForScan(seance);
+                                setShowScanner(true);
+                              }}
+                              className="w-full btn-primary mt-3"
+                            >
+                              📷 Scanner le QR Code
+                            </button>
+                          )}
+
+                          {!isOpen && !isPresent && (
+                            <button
+                              onClick={() => {
+                                setSelectedSeanceForJustif(seance);
+                                setShowJustificationModal(true);
+                              }}
+                              className="w-full btn-secondary mt-3 border-2 border-orange-400 text-orange-700 hover:bg-orange-50"
+                            >
+                              📄 Soumettre un justificatif
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
         {activeTab === 'historique' && (
           <div>
-            <h2 className="font-bold text-xl mb-4">Historique de Présence</h2>
-            <div className="space-y-2">
-              {attendance.length === 0 ? (
-                <p className="text-gray-600">Aucune présence enregistrée</p>
+            <h2 className="font-bold text-xl mb-6">Historique de Présence</h2>
+            
+            {attendance.length === 0 ? (
+              <p className="text-gray-600">Aucune présence enregistrée</p>
+            ) : (
+              <div className="space-y-8">
+                {/* Section Présents */}
+                {attendance.filter((att) => att.status === 'PRESENT').length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-4">
+                      <h3 className="text-lg font-bold text-green-700">
+                        ✅ Présent(s)
+                      </h3>
+                      <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-bold">
+                        {attendance.filter((att) => att.status === 'PRESENT').length}
+                      </span>
+                    </div>
+                    <div className="space-y-2 border-l-4 border-green-400 pl-4">
+                      {attendance
+                        .filter((att) => att.status === 'PRESENT')
+                        .map((att) => (
+                          <div key={att.id} className="card bg-green-50">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <h4 className="font-bold text-green-900">{att.seance.module.name}</h4>
+                                <p className="text-sm text-green-700">
+                                  {att.seance.groupe.name}
+                                </p>
+                                <p className="text-xs text-green-600">
+                                  {new Date(att.createdAt).toLocaleString('fr-FR')}
+                                </p>
+                              </div>
+                              <span className="px-3 py-1 rounded font-bold bg-green-200 text-green-900">
+                                Présent
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Section Absents */}
+                {attendance.filter((att) => att.status === 'ABSENT').length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-4">
+                      <h3 className="text-lg font-bold text-red-700">
+                        ❌ Absent(s)
+                      </h3>
+                      <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm font-bold">
+                        {attendance.filter((att) => att.status === 'ABSENT').length}
+                      </span>
+                    </div>
+                    <div className="space-y-2 border-l-4 border-red-400 pl-4">
+                      {attendance
+                        .filter((att) => att.status === 'ABSENT')
+                        .map((att) => (
+                          <div key={att.id} className="card bg-red-50">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <h4 className="font-bold text-red-900">{att.seance.module.name}</h4>
+                                <p className="text-sm text-red-700">
+                                  {att.seance.groupe.name}
+                                </p>
+                                <p className="text-xs text-red-600">
+                                  {new Date(att.createdAt).toLocaleString('fr-FR')}
+                                </p>
+                              </div>
+                              <span className="px-3 py-1 rounded font-bold bg-red-200 text-red-900">
+                                Absent
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'justificatifs' && (
+          <div>
+            <h2 className="font-bold text-xl mb-4">Mes Justificatifs</h2>
+            <div className="space-y-3">
+              {justifications.length === 0 ? (
+                <p className="text-gray-600">Aucun justificatif soumis</p>
               ) : (
-                attendance.map((att) => (
-                  <div key={att.id} className="card">
-                    <div className="flex justify-between items-start">
+                justifications.map((justif) => (
+                  <div key={justif.id} className="card">
+                    <div className="flex justify-between items-start mb-3">
                       <div>
-                        <h4 className="font-bold">{att.seance.module.name}</h4>
+                        <h4 className="font-bold">{justif.seance.module.name}</h4>
                         <p className="text-sm text-gray-600">
-                          {att.seance.groupe.name} - Prof. {att.seance.professor.firstName}{' '}
-                          {att.seance.professor.lastName}
+                          {justif.seance.groupe.name} - {new Date(justif.seance.date).toLocaleDateString('fr-FR')}
                         </p>
-                        <p className="text-xs text-gray-500">
-                          {new Date(att.markedAt).toLocaleString('fr-FR')}
+                        <p className="text-xs text-gray-500 mt-1">
+                          Soumis le {new Date(justif.createdAt).toLocaleString('fr-FR')}
                         </p>
                       </div>
                       <span
-                        className={`px-3 py-1 rounded font-bold ${
-                          att.status === 'PRESENT'
+                        className={`px-3 py-1 rounded text-xs font-bold ${
+                          justif.status === 'APPROVED'
                             ? 'bg-green-100 text-green-800'
-                            : 'bg-red-100 text-red-800'
+                            : justif.status === 'REJECTED'
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-yellow-100 text-yellow-800'
                         }`}
                       >
-                        {att.status === 'PRESENT' ? 'Présent' : 'Absent'}
+                        {justif.status === 'APPROVED'
+                          ? '✅ Approuvé'
+                          : justif.status === 'REJECTED'
+                          ? '❌ Rejeté'
+                          : '⏳ En attente'}
                       </span>
                     </div>
+                    <p className="text-sm text-gray-700 mb-2">
+                      <strong>Votre commentaire:</strong> {justif.reason}
+                    </p>
+                    {justif.fileUrl && (
+                      <a
+                        href={justif.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline text-sm block mb-2"
+                      >
+                        📎 Voir le fichier joint
+                      </a>
+                    )}
+                    {justif.adminComment && (
+                      <div className="mt-3 p-3 bg-blue-50 rounded border-l-4 border-blue-400">
+                        <p className="text-xs font-semibold text-blue-900 mb-1">
+                          💬 Retour du professeur:
+                        </p>
+                        <p className="text-sm text-blue-800">
+                          {justif.adminComment}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 ))
               )}
@@ -339,6 +562,183 @@ export default function StudentPage() {
           </div>
         )}
       </main>
+
+      {/* Justification Modal */}
+      {showJustificationModal && selectedSeanceForJustif && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold">Justificatif d'Absence</h3>
+              <button
+                onClick={() => {
+                  setShowJustificationModal(false);
+                  setJustificationReason('');
+                  setJustificationFile(null);
+                }}
+                className="text-2xl text-gray-500 hover:text-gray-700"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="mb-4 p-3 bg-gray-50 rounded">
+              <p className="text-sm font-semibold mb-1">Séance concernée:</p>
+              <p className="text-sm text-gray-700">
+                {new Date(selectedSeanceForJustif.date).toLocaleDateString('fr-FR')} - {selectedSeanceForJustif.startTime}
+              </p>
+              <p className="text-xs text-gray-600">Groupe: {selectedSeanceForJustif.groupeName}</p>
+            </div>
+
+            <div className="mb-4">
+              <label className="block font-semibold mb-2 text-gray-700">
+                Votre commentaire / Raison de l'absence *
+              </label>
+              <textarea
+                value={justificationReason}
+                onChange={(e) => setJustificationReason(e.target.value)}
+                placeholder="Expliquez la raison de votre absence en détail..."
+                rows={4}
+                className="input-field resize-none"
+                required
+              />
+              <p className="text-xs text-gray-600 mt-1">
+                💡 Soyez précis: maladie, problème familial, rendez-vous médical, etc.
+              </p>
+            </div>
+
+            <div className="mb-4">
+              <label className="block font-semibold mb-2 text-gray-700">
+                Pièce justificative (PDF ou image)
+              </label>
+              <input
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    // Vérifier la taille (max 5MB)
+                    if (file.size > 5 * 1024 * 1024) {
+                      setMessage({ type: 'error', text: 'Fichier trop volumineux (max 5MB)' });
+                      e.target.value = '';
+                      return;
+                    }
+                    setJustificationFile(file);
+                  }
+                }}
+                className="input-field"
+              />
+              <p className="text-xs text-gray-600 mt-1">
+                💡 Formats acceptés: PDF, JPG, PNG (max 5MB)
+              </p>
+              {justificationFile && (
+                <p className="text-sm text-green-600 mt-2">
+                  ✓ Fichier sélectionné: {justificationFile.name}
+                </p>
+              )}
+            </div>
+
+            <button
+              onClick={handleSubmitJustification}
+              disabled={!justificationReason.trim()}
+              className="w-full btn-primary font-bold py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              📤 Soumettre le justificatif
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Scanner Modal */}
+      {showScanner && selectedSeanceForScan && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold">Scanner QR Code</h3>
+              <button
+                onClick={() => {
+                  setShowScanner(false);
+                  setShowCamera(false);
+                  setTokenInput('');
+                }}
+                className="text-2xl text-gray-500 hover:text-gray-700"
+              >
+                ×
+              </button>
+            </div>
+
+            <p className="text-sm text-gray-600 mb-4">
+              Séance: {new Date(selectedSeanceForScan.date).toLocaleDateString('fr-FR')} - {selectedSeanceForScan.startTime}
+            </p>
+
+            {/* Méthode 1: Caméra */}
+            <div className="mb-4 p-3 bg-green-50 rounded border-2 border-green-400">
+              <label className="block font-bold mb-2 text-green-900">
+                📷 Scan avec caméra (recommandé)
+              </label>
+              {showCamera ? (
+                <>
+                  <div className="rounded overflow-hidden border-2 border-gray-200 mb-2">
+                    <QrScanner
+                      onDecode={(result) => {
+                        const value = Array.isArray(result) ? result[0] : result;
+                        if (value) {
+                          setTokenInput(value);
+                          setMessage({ type: 'success', text: 'QR scanné! Cliquez sur Valider.' });
+                        }
+                      }}
+                      onError={(err) => {
+                        console.error(err);
+                        setMessage({ type: 'warning', text: 'Caméra indisponible' });
+                      }}
+                      constraints={{ facingMode: 'environment' }}
+                      scanDelay={800}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                  <button
+                    onClick={() => setShowCamera(false)}
+                    className="w-full btn-secondary"
+                  >
+                    ✕ Fermer caméra
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setShowCamera(true)}
+                  className="w-full btn-primary"
+                >
+                  Activer caméra
+                </button>
+              )}
+            </div>
+
+            {/* Méthode 2: Saisie manuelle */}
+            <div className="mb-4 p-3 bg-gray-50 rounded border border-gray-300">
+              <label className="block font-semibold mb-2 text-gray-700">
+                Ou saisir le token manuellement
+              </label>
+              <input
+                type="text"
+                value={tokenInput}
+                onChange={(e) => setTokenInput(e.target.value)}
+                placeholder="Coller le token"
+                className="input-field font-mono text-sm"
+              />
+              <p className="text-xs text-gray-600 mt-1">
+                💡 Si caméra ne marche pas, demandez au prof de geler le QR
+              </p>
+            </div>
+
+            <button
+              onClick={handleScan}
+              disabled={!tokenInput}
+              className="w-full btn-primary font-bold py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              ✓ Valider la présence
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }

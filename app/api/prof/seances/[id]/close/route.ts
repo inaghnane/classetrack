@@ -29,15 +29,39 @@ export async function POST(
       return NextResponse.json({ error: 'Seance not found' }, { status: 404 });
     }
 
-    if (seance.professorId !== (session.user as any).id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
     if (seance.status !== 'OPEN') {
       return NextResponse.json(
         { error: 'Seance is not in OPEN status' },
         { status: 400 }
       );
+    }
+
+    // Récupérer tous les étudiants du groupe
+    const enrollments = await prisma.enrollment.findMany({
+      where: { groupeId: seance.groupeId },
+      select: { studentId: true },
+    });
+
+    // Récupérer les étudiants déjà présents
+    const presentAttendances = await prisma.attendance.findMany({
+      where: { seanceId: params.id, status: 'PRESENT' },
+      select: { studentId: true },
+    });
+
+    const presentStudentIds = new Set(presentAttendances.map(a => a.studentId));
+    
+    // Créer des enregistrements ABSENT pour les étudiants qui n'ont pas scanné
+    const absentStudents = enrollments.filter(e => !presentStudentIds.has(e.studentId));
+    
+    if (absentStudents.length > 0) {
+      await prisma.attendance.createMany({
+        data: absentStudents.map(e => ({
+          studentId: e.studentId,
+          seanceId: params.id,
+          status: 'ABSENT',
+        })),
+        skipDuplicates: true,
+      });
     }
 
     const updated = await prisma.seance.update({

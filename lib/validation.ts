@@ -30,9 +30,9 @@ export const createModuleSchema = z.object({
 export const createSeanceSchema = z.object({
   moduleId: z.string().cuid(),
   groupeId: z.string().cuid(),
-  startsAt: z.coerce.date(),
-  endsAt: z.coerce.date(),
-  room: z.string().min(1, 'Room required'),
+  date: z.coerce.date(),
+  startTime: z.string().min(1, 'Start time required'),
+  endTime: z.string().min(1, 'End time required'),
 });
 
 export const scanSchema = z.object({

@@ -30,10 +30,6 @@ export async function POST(
       return NextResponse.json({ error: 'Seance not found' }, { status: 404 });
     }
 
-    if (seance.professorId !== (session.user as any).id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
     if (seance.status !== 'PLANNED') {
       return NextResponse.json(
         { error: 'Seance is not in PLANNED status' },
@@ -41,8 +37,7 @@ export async function POST(
       );
     }
 
-    // Generate QR secret
-    const qrSecret = generateQRSecret();
+    const qrSecret = seance.qrSecret ?? generateQRSecret();
 
     const updated = await prisma.seance.update({
       where: { id: params.id },

@@ -8,7 +8,7 @@ import Header from '@/components/Header';
 export default function AdminPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState('users');
+  const [activeTab, setActiveTab] = useState('user');
 
   if (status === 'loading') {
     return <div className="flex items-center justify-center min-h-screen">Chargement...</div>;
@@ -26,7 +26,7 @@ export default function AdminPage() {
         <h1 className="text-3xl font-bold mb-6">Panneau Admin</h1>
 
         <div className="flex gap-4 mb-6 border-b">
-          {['users', 'filieres', 'groupes', 'modules', 'seances', 'enrollments'].map((tab) => (
+          {['user', 'filiere', 'groupe', 'module', 'seance', 'enrollment'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -42,20 +42,20 @@ export default function AdminPage() {
         </div>
 
         <div className="card">
-          {activeTab === 'users' && <AdminUsers />}
-          {activeTab === 'filieres' && <AdminFilieres />}
-          {activeTab === 'groupes' && <AdminGroupes />}
-          {activeTab === 'modules' && <AdminModules />}
-          {activeTab === 'seances' && <AdminSeances />}
-          {activeTab === 'enrollments' && <AdminEnrollments />}
+          {activeTab === 'user' && <Adminuser />}
+          {activeTab === 'filiere' && <Adminfiliere />}
+          {activeTab === 'groupe' && <Admingroupe />}
+          {activeTab === 'module' && <Adminmodule />}
+          {activeTab === 'seance' && <Adminseance />}
+          {activeTab === 'enrollment' && <Adminenrollment />}
         </div>
       </main>
     </>
   );
 }
 
-function AdminUsers() {
-  const [users, setUsers] = useState<any[]>([]);
+function Adminuser() {
+  const [user, setuser] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [newUser, setNewUser] = useState({
     email: '',
@@ -64,37 +64,121 @@ function AdminUsers() {
     password: '',
     role: 'STUDENT',
   });
+  const [filieres, setFilieres] = useState<any[]>([]);
+  const [groupes, setGroupes] = useState<any[]>([]);
+  const [selectedFiliereId, setSelectedFiliereId] = useState('');
+  const [selectedGroupeId, setSelectedGroupeId] = useState('');
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [editingUser, setEditingUser] = useState<any | null>(null);
+  const [editUser, setEditUser] = useState({
+    firstName: '',
+    lastName: '',
+    role: 'STUDENT',
+    password: '',
+  });
 
-  const fetchUsers = async () => {
+  const fetchuser = async () => {
     setLoading(true);
-    const res = await fetch('/api/admin/users');
+    const res = await fetch('/api/admin/user');
     const data = await res.json();
-    setUsers(data);
+    setuser(data);
     setLoading(false);
   };
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    await fetch('/api/admin/users', {
+    await fetch('/api/admin/user', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newUser),
     });
     setNewUser({ email: '', firstName: '', lastName: '', password: '', role: 'STUDENT' });
-    fetchUsers();
+    fetchuser();
   };
 
   const handleDeleteUser = async (id: string) => {
     if (confirm('Confirmer la suppression?')) {
-      await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
-      fetchUsers();
+      await fetch(`/api/admin/user/${id}`, { method: 'DELETE' });
+      fetchuser();
     }
+  };
+
+  const fetchFilieres = async () => {
+    const res = await fetch('/api/admin/filiere');
+    const data = await res.json();
+    setFilieres(data);
+  };
+
+  const fetchGroupes = async () => {
+    const res = await fetch('/api/admin/groupe');
+    const data = await res.json();
+    setGroupes(data);
+  };
+
+  useEffect(() => {
+    fetchFilieres();
+    fetchGroupes();
+  }, []);
+
+  const handleImportStudents = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setImportMessage(null);
+
+    if (!importFile || !selectedGroupeId) {
+      setImportMessage('Veuillez sélectionner un fichier et un groupe.');
+      return;
+    }
+
+    setImporting(true);
+    const formData = new FormData();
+    formData.append('file', importFile);
+    formData.append('groupeId', selectedGroupeId);
+
+    const res = await fetch('/api/admin/user/import', {
+      method: 'POST',
+      body: formData,
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      setImportMessage(`Import terminé: ${data.created} créés, ${data.enrolled} inscrits, ${data.skipped} ignorés.`);
+      setImportFile(null);
+      fetchuser();
+    } else {
+      setImportMessage(data.error || 'Erreur lors de l’import');
+    }
+    setImporting(false);
+  };
+
+  const handleEditUser = (u: any) => {
+    setEditingUser(u);
+    setEditUser({
+      firstName: u.firstName || '',
+      lastName: u.lastName || '',
+      role: u.role || 'STUDENT',
+      password: '',
+    });
+  };
+
+  const handleUpdateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    await fetch(`/api/admin/user/${editingUser.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editUser),
+    });
+    setEditingUser(null);
+    setEditUser({ firstName: '', lastName: '', role: 'STUDENT', password: '' });
+    fetchuser();
   };
 
   return (
     <div>
       <button
-        onClick={fetchUsers}
+        onClick={fetchuser}
         disabled={loading}
         className="btn-primary mb-4"
       >
@@ -151,6 +235,52 @@ function AdminUsers() {
         </div>
       </form>
 
+      <form onSubmit={handleImportStudents} className="mb-6 p-4 bg-gray-50 rounded">
+        <h3 className="font-bold mb-4">Importer des étudiants (Excel)</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <select
+            value={selectedFiliereId}
+            onChange={(e) => {
+              setSelectedFiliereId(e.target.value);
+              setSelectedGroupeId('');
+            }}
+            className="input-field"
+          >
+            <option value="">Sélectionner une filière</option>
+            {filieres.map((f) => (
+              <option key={f.id} value={f.id}>{f.name}</option>
+            ))}
+          </select>
+          <select
+            value={selectedGroupeId}
+            onChange={(e) => setSelectedGroupeId(e.target.value)}
+            className="input-field"
+          >
+            <option value="">Sélectionner un groupe</option>
+            {groupes
+              .filter((g) => !selectedFiliereId || g.filiereId === selectedFiliereId)
+              .map((g) => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+          </select>
+          <input
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+            className="input-field"
+          />
+          <button type="submit" className="btn-primary" disabled={importing}>
+            {importing ? 'Import...' : 'Importer'}
+          </button>
+        </div>
+        <p className="text-xs text-gray-500 mt-2">
+          Colonnes attendues: email, firstName, lastName (ou prenom, nom)
+        </p>
+        {importMessage && (
+          <p className="mt-2 text-sm font-semibold">{importMessage}</p>
+        )}
+      </form>
+
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
@@ -162,12 +292,18 @@ function AdminUsers() {
             </tr>
           </thead>
           <tbody>
-            {users.map((user) => (
+            {user.map((user) => (
               <tr key={user.id} className="border-b">
                 <td className="border p-2">{user.email}</td>
                 <td className="border p-2">{user.firstName} {user.lastName}</td>
                 <td className="border p-2">{user.role}</td>
                 <td className="border p-2">
+                  <button
+                    onClick={() => handleEditUser(user)}
+                    className="btn-secondary text-sm mr-2"
+                  >
+                    Modifier
+                  </button>
                   <button
                     onClick={() => handleDeleteUser(user.id)}
                     className="btn-danger text-sm"
@@ -180,35 +316,89 @@ function AdminUsers() {
           </tbody>
         </table>
       </div>
+
+      {editingUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold mb-4">Modifier l'utilisateur</h3>
+            <form onSubmit={handleUpdateUser} className="space-y-3">
+              <input
+                type="text"
+                placeholder="Prénom"
+                value={editUser.firstName}
+                onChange={(e) => setEditUser({ ...editUser, firstName: e.target.value })}
+                className="input-field"
+                required
+              />
+              <input
+                type="text"
+                placeholder="Nom"
+                value={editUser.lastName}
+                onChange={(e) => setEditUser({ ...editUser, lastName: e.target.value })}
+                className="input-field"
+                required
+              />
+              <select
+                value={editUser.role}
+                onChange={(e) => setEditUser({ ...editUser, role: e.target.value })}
+                className="input-field"
+              >
+                <option value="STUDENT">Étudiant</option>
+                <option value="PROF">Professeur</option>
+                <option value="ADMIN">Admin</option>
+              </select>
+              <input
+                type="password"
+                placeholder="Nouveau mot de passe (optionnel)"
+                value={editUser.password}
+                onChange={(e) => setEditUser({ ...editUser, password: e.target.value })}
+                className="input-field"
+              />
+              <div className="flex gap-2 pt-2">
+                <button type="submit" className="btn-primary flex-1">
+                  Enregistrer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="btn-secondary flex-1"
+                >
+                  Annuler
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function AdminFilieres() {
-  const [filieres, setFilieres] = useState<any[]>([]);
+function Adminfiliere() {
+  const [filiere, setfiliere] = useState<any[]>([]);
   const [newName, setNewName] = useState('');
 
-  const fetchFilieres = async () => {
-    const res = await fetch('/api/admin/filieres');
+  const fetchfiliere = async () => {
+    const res = await fetch('/api/admin/filiere');
     const data = await res.json();
-    setFilieres(data);
+    setfiliere(data);
   };
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    await fetch('/api/admin/filieres', {
+    await fetch('/api/admin/filiere', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: newName }),
     });
     setNewName('');
-    fetchFilieres();
+    fetchfiliere();
   };
 
   return (
     <div>
-      <button onClick={fetchFilieres} className="btn-primary mb-4">
-        Charger les filières
+      <button onClick={fetchfiliere} className="btn-primary mb-4">
+        Charger les filière
       </button>
       <form onSubmit={handleAdd} className="mb-4 flex gap-2">
         <input
@@ -223,7 +413,7 @@ function AdminFilieres() {
         </button>
       </form>
       <ul>
-        {filieres.map((f) => (
+        {filiere.map((f) => (
           <li key={f.id} className="p-2 border-b">
             {f.name}
           </li>
@@ -233,44 +423,44 @@ function AdminFilieres() {
   );
 }
 
-function AdminGroupes() {
-  const [groupes, setGroupes] = useState<any[]>([]);
-  const [filieres, setFilieres] = useState<any[]>([]);
+function Admingroupe() {
+  const [groupe, setgroupe] = useState<any[]>([]);
+  const [filiere, setfiliere] = useState<any[]>([]);
   const [newGroupe, setNewGroupe] = useState({ name: '', filiereId: '' });
 
-  const fetchGroupes = async () => {
-    const res = await fetch('/api/admin/groupes');
+  const fetchgroupe = async () => {
+    const res = await fetch('/api/admin/groupe');
     const data = await res.json();
-    setGroupes(data);
+    setgroupe(data);
   };
 
-  const fetchFilieres = async () => {
-    const res = await fetch('/api/admin/filieres');
+  const fetchfiliere = async () => {
+    const res = await fetch('/api/admin/filiere');
     const data = await res.json();
-    setFilieres(data);
+    setfiliere(data);
   };
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    await fetch('/api/admin/groupes', {
+    await fetch('/api/admin/groupe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newGroupe),
     });
     setNewGroupe({ name: '', filiereId: '' });
-    fetchGroupes();
+    fetchgroupe();
   };
 
   return (
     <div>
       <button
         onClick={() => {
-          fetchGroupes();
-          fetchFilieres();
+          fetchgroupe();
+          fetchfiliere();
         }}
         className="btn-primary mb-4"
       >
-        Charger les groupes
+        Charger les groupe
       </button>
       <form onSubmit={handleAdd} className="mb-4 flex gap-2">
         <input
@@ -286,7 +476,7 @@ function AdminGroupes() {
           className="input-field flex-1"
         >
           <option value="">Sélectionner filière</option>
-          {filieres.map((f) => (
+          {filiere.map((f) => (
             <option key={f.id} value={f.id}>
               {f.name}
             </option>
@@ -297,7 +487,7 @@ function AdminGroupes() {
         </button>
       </form>
       <ul>
-        {groupes.map((g) => (
+        {groupe.map((g) => (
           <li key={g.id} className="p-2 border-b">
             {g.name} ({g.filiere.name})
           </li>
@@ -307,44 +497,44 @@ function AdminGroupes() {
   );
 }
 
-function AdminModules() {
-  const [modules, setModules] = useState<any[]>([]);
-  const [filieres, setFilieres] = useState<any[]>([]);
+function Adminmodule() {
+  const [module, setmodule] = useState<any[]>([]);
+  const [filiere, setfiliere] = useState<any[]>([]);
   const [newModule, setNewModule] = useState({ name: '', filiereId: '' });
 
-  const fetchModules = async () => {
-    const res = await fetch('/api/admin/modules');
+  const fetchmodule = async () => {
+    const res = await fetch('/api/admin/module');
     const data = await res.json();
-    setModules(data);
+    setmodule(data);
   };
 
-  const fetchFilieres = async () => {
-    const res = await fetch('/api/admin/filieres');
+  const fetchfiliere = async () => {
+    const res = await fetch('/api/admin/filiere');
     const data = await res.json();
-    setFilieres(data);
+    setfiliere(data);
   };
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    await fetch('/api/admin/modules', {
+    await fetch('/api/admin/module', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newModule),
     });
     setNewModule({ name: '', filiereId: '' });
-    fetchModules();
+    fetchmodule();
   };
 
   return (
     <div>
       <button
         onClick={() => {
-          fetchModules();
-          fetchFilieres();
+          fetchmodule();
+          fetchfiliere();
         }}
         className="btn-primary mb-4"
       >
-        Charger les modules
+        Charger les module
       </button>
       <form onSubmit={handleAdd} className="mb-4 flex gap-2">
         <input
@@ -360,7 +550,7 @@ function AdminModules() {
           className="input-field flex-1"
         >
           <option value="">Sélectionner filière</option>
-          {filieres.map((f) => (
+          {filiere.map((f) => (
             <option key={f.id} value={f.id}>
               {f.name}
             </option>
@@ -371,7 +561,7 @@ function AdminModules() {
         </button>
       </form>
       <ul>
-        {modules.map((m) => (
+        {module.map((m) => (
           <li key={m.id} className="p-2 border-b">
             {m.name} ({m.filiere.name})
           </li>
@@ -381,65 +571,59 @@ function AdminModules() {
   );
 }
 
-function AdminSeances() {
-  const [seances, setSeances] = useState<any[]>([]);
-  const [modules, setModules] = useState<any[]>([]);
-  const [profs, setProfs] = useState<any[]>([]);
-  const [groupes, setGroupes] = useState<any[]>([]);
+function Adminseance() {
+  const [seance, setseance] = useState<any[]>([]);
+  const [module, setmodule] = useState<any[]>([]);
+  const [groupe, setgroupe] = useState<any[]>([]);
   const [newSeance, setNewSeance] = useState({
     moduleId: '',
-    professorId: '',
     groupeId: '',
-    startsAt: '',
-    endsAt: '',
-    room: '',
+    date: '',
+    startTime: '',
+    endTime: '',
   });
 
-  const fetchSeances = async () => {
-    const res = await fetch('/api/admin/seances');
+  const fetchseance = async () => {
+    const res = await fetch('/api/admin/seance');
     const data = await res.json();
-    setSeances(data);
+    setseance(data);
   };
 
   const loadLists = async () => {
-    const [modulesRes, usersRes, groupesRes] = await Promise.all([
-      fetch('/api/admin/modules'),
-      fetch('/api/admin/users'),
-      fetch('/api/admin/groupes'),
+    const [moduleRes, groupeRes] = await Promise.all([
+      fetch('/api/admin/module'),
+      fetch('/api/admin/groupe'),
     ]);
 
-    const modulesData = await modulesRes.json();
-    const usersData = await usersRes.json();
-    const groupesData = await groupesRes.json();
+    const moduleData = await moduleRes.json();
+    const groupeData = await groupeRes.json();
 
-    setModules(modulesData);
-    setProfs(usersData.filter((u: any) => u.role === 'PROF'));
-    setGroupes(groupesData);
+    setmodule(moduleData);
+    setgroupe(groupeData);
   };
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    await fetch('/api/admin/seances', {
+    await fetch('/api/admin/seance', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newSeance),
     });
     setNewSeance({
       moduleId: '',
-      professorId: '',
       groupeId: '',
-      startsAt: '',
-      endsAt: '',
-      room: '',
+      date: '',
+      startTime: '',
+      endTime: '',
     });
-    fetchSeances();
+    fetchseance();
   };
 
   return (
     <div>
       <button
         onClick={() => {
-          fetchSeances();
+          fetchseance();
           loadLists();
         }}
         className="btn-primary mb-4"
@@ -449,29 +633,17 @@ function AdminSeances() {
 
       <form onSubmit={handleAdd} className="mb-6 p-4 bg-gray-50 rounded">
         <h3 className="font-bold mb-4">Ajouter une séance</h3>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <select
             value={newSeance.moduleId}
             onChange={(e) => setNewSeance({ ...newSeance, moduleId: e.target.value })}
             className="input-field"
+            required
           >
             <option value="">Module</option>
-            {modules.map((m) => (
+            {module.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.name}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={newSeance.professorId}
-            onChange={(e) => setNewSeance({ ...newSeance, professorId: e.target.value })}
-            className="input-field"
-          >
-            <option value="">Professeur</option>
-            {profs.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.firstName} {p.lastName}
               </option>
             ))}
           </select>
@@ -480,9 +652,10 @@ function AdminSeances() {
             value={newSeance.groupeId}
             onChange={(e) => setNewSeance({ ...newSeance, groupeId: e.target.value })}
             className="input-field"
+            required
           >
             <option value="">Groupe</option>
-            {groupes.map((g) => (
+            {groupe.map((g) => (
               <option key={g.id} value={g.id}>
                 {g.name}
               </option>
@@ -490,27 +663,32 @@ function AdminSeances() {
           </select>
 
           <input
-            type="datetime-local"
-            value={newSeance.startsAt}
-            onChange={(e) => setNewSeance({ ...newSeance, startsAt: e.target.value })}
+            type="date"
+            value={newSeance.date}
+            onChange={(e) => setNewSeance({ ...newSeance, date: e.target.value })}
             className="input-field"
+            required
           />
 
           <input
-            type="datetime-local"
-            value={newSeance.endsAt}
-            onChange={(e) => setNewSeance({ ...newSeance, endsAt: e.target.value })}
+            type="time"
+            placeholder="Heure début"
+            value={newSeance.startTime}
+            onChange={(e) => setNewSeance({ ...newSeance, startTime: e.target.value })}
             className="input-field"
+            required
           />
 
           <input
-            type="text"
-            placeholder="Salle"
-            value={newSeance.room}
-            onChange={(e) => setNewSeance({ ...newSeance, room: e.target.value })}
+            type="time"
+            placeholder="Heure fin"
+            value={newSeance.endTime}
+            onChange={(e) => setNewSeance({ ...newSeance, endTime: e.target.value })}
             className="input-field"
+            required
           />
-          <button type="submit" className="btn-primary col-span-3">
+
+          <button type="submit" className="btn-primary col-span-2">
             Ajouter
           </button>
         </div>
@@ -522,20 +700,20 @@ function AdminSeances() {
             <tr className="bg-gray-100">
               <th className="border p-2 text-left">Module</th>
               <th className="border p-2 text-left">Groupe</th>
-              <th className="border p-2 text-left">Professeur</th>
               <th className="border p-2 text-left">Date</th>
-              <th className="border p-2 text-left">Salle</th>
+              <th className="border p-2 text-left">Heure début</th>
+              <th className="border p-2 text-left">Heure fin</th>
               <th className="border p-2 text-left">Statut</th>
             </tr>
           </thead>
           <tbody>
-            {seances.map((s) => (
+            {seance.map((s) => (
               <tr key={s.id} className="border-b">
                 <td className="border p-2">{s.module.name}</td>
                 <td className="border p-2">{s.groupe.name}</td>
-                <td className="border p-2">{s.professor.firstName} {s.professor.lastName}</td>
-                <td className="border p-2">{new Date(s.startsAt).toLocaleString('fr-FR')}</td>
-                <td className="border p-2">{s.room}</td>
+                <td className="border p-2">{new Date(s.date).toLocaleDateString('fr-FR')}</td>
+                <td className="border p-2">{s.startTime}</td>
+                <td className="border p-2">{s.endTime}</td>
                 <td className="border p-2">{s.status}</td>
               </tr>
             ))}
@@ -546,33 +724,33 @@ function AdminSeances() {
   );
 }
 
-function AdminEnrollments() {
+function Adminenrollment() {
   const [students, setStudents] = useState<any[]>([]);
-  const [filieres, setFilieres] = useState<any[]>([]);
-  const [groupes, setGroupes] = useState<any[]>([]);
-  const [enrollments, setEnrollments] = useState<any[]>([]);
+  const [filiere, setfiliere] = useState<any[]>([]);
+  const [groupe, setgroupe] = useState<any[]>([]);
+  const [enrollment, setenrollment] = useState<any[]>([]);
   const [selectedFiliere, setSelectedFiliere] = useState('');
   const [newEnrollment, setNewEnrollment] = useState({ studentId: '', groupeId: '' });
   const [loading, setLoading] = useState(false);
 
   const loadAll = async () => {
     setLoading(true);
-    const [usersRes, filieresRes, groupesRes, enrollmentsRes] = await Promise.all([
-      fetch('/api/admin/users'),
-      fetch('/api/admin/filieres'),
-      fetch('/api/admin/groupes'),
-      fetch('/api/admin/enrollments'),
+    const [userRes, filiereRes, groupeRes, enrollmentRes] = await Promise.all([
+      fetch('/api/admin/user'),
+      fetch('/api/admin/filiere'),
+      fetch('/api/admin/groupe'),
+      fetch('/api/admin/enrollment'),
     ]);
 
-    const usersData = await usersRes.json();
-    const filieresData = await filieresRes.json();
-    const groupesData = await groupesRes.json();
-    const enrollmentsData = await enrollmentsRes.json();
+    const userData = await userRes.json();
+    const filiereData = await filiereRes.json();
+    const groupeData = await groupeRes.json();
+    const enrollmentData = await enrollmentRes.json();
 
-    setStudents(usersData.filter((u: any) => u.role === 'STUDENT'));
-    setFilieres(filieresData);
-    setGroupes(groupesData);
-    setEnrollments(enrollmentsData);
+    setStudents(userData.filter((u: any) => u.role === 'STUDENT'));
+    setfiliere(filiereData);
+    setgroupe(groupeData);
+    setenrollment(enrollmentData);
     setLoading(false);
   };
 
@@ -584,7 +762,7 @@ function AdminEnrollments() {
     e.preventDefault();
     if (!newEnrollment.studentId || !newEnrollment.groupeId) return;
 
-    const res = await fetch('/api/admin/enrollments', {
+    const res = await fetch('/api/admin/enrollment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newEnrollment),
@@ -596,9 +774,9 @@ function AdminEnrollments() {
     }
   };
 
-  const filteredGroupes = selectedFiliere
-    ? groupes.filter((g: any) => g.filiereId === selectedFiliere)
-    : groupes;
+  const filteredgroupe = selectedFiliere
+    ? groupe.filter((g: any) => g.filiereId === selectedFiliere)
+    : groupe;
 
   return (
     <div>
@@ -630,7 +808,7 @@ function AdminEnrollments() {
             className="input-field"
           >
             <option value="">Filière (pour filtrer)</option>
-            {filieres.map((f) => (
+            {filiere.map((f) => (
               <option key={f.id} value={f.id}>
                 {f.name}
               </option>
@@ -643,9 +821,9 @@ function AdminEnrollments() {
             className="input-field"
           >
             <option value="">Groupe</option>
-            {filteredGroupes.map((g: any) => (
+            {filteredgroupe.map((g: any) => (
               <option key={g.id} value={g.id}>
-                {g.name} ({filieres.find((f: any) => f.id === g.filiereId)?.name || '—'})
+                {g.name} ({filiere.find((f: any) => f.id === g.filiereId)?.name || '—'})
               </option>
             ))}
           </select>
@@ -667,7 +845,7 @@ function AdminEnrollments() {
             </tr>
           </thead>
           <tbody>
-            {enrollments.map((enr) => (
+            {enrollment.map((enr) => (
               <tr key={enr.id} className="border-b">
                 <td className="border p-2">{enr.student.firstName} {enr.student.lastName}</td>
                 <td className="border p-2">{enr.student.email}</td>

@@ -1,22 +1,22 @@
-version: '3.8'
-
 services:
-  mariadb:
-    image: mariadb:10.5
-    container_name: classe-track-db
+  mysql:
+    image: mysql:8.0
+    container_name: classetrack-mysql
+    restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: password
-      MYSQL_DATABASE: classe_track
-      MYSQL_CHARSET: utf8mb4
-      MYSQL_COLLATION: utf8mb4_unicode_ci
+      MYSQL_ROOT_PASSWORD: ""
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+      MYSQL_DATABASE: classetrack
     ports:
-      - "3306:3306"
+      - "3307:3306"
     volumes:
-      - mariadb_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      timeout: 20s
-      retries: 10
+      - mysql-data:/var/lib/mysql
+    networks:
+      - classetrack-network
 
 volumes:
-  mariadb_data:
+  mysql-data:
+
+networks:
+  classetrack-network:
+    driver: bridge

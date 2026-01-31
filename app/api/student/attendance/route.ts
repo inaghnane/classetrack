@@ -26,12 +26,49 @@ export async function GET(request: NextRequest) {
         include: {
           module: true,
           groupe: true,
-          professor: { select: { firstName: true, lastName: true } },
         },
       },
     },
-    orderBy: { markedAt: 'desc' },
+    orderBy: { createdAt: 'desc' },
   });
 
-  return NextResponse.json(attendances);
+  // Récupérer les groupes de l'étudiant
+  const enrollments = await prisma.enrollment.findMany({
+    where: { studentId },
+    select: { groupeId: true },
+  });
+
+  const groupeIds = enrollments.map(e => e.groupeId);
+
+  // Récupérer les séances clôturées des groupes de l'étudiant
+  const closedSeances = await prisma.seance.findMany({
+    where: {
+      groupeId: { in: groupeIds },
+      status: 'CLOSED',
+    },
+    include: {
+      module: true,
+      groupe: true,
+    },
+  });
+
+  const attendedSeanceIds = new Set(attendances.map(a => a.seanceId));
+
+  const computedAbsences = closedSeances
+    .filter(seance => !attendedSeanceIds.has(seance.id))
+    .map(seance => ({
+      id: `absent-${seance.id}`,
+      studentId,
+      seanceId: seance.id,
+      status: 'ABSENT',
+      createdAt: seance.date,
+      updatedAt: seance.updatedAt,
+      seance,
+    }));
+
+  const merged = [...attendances, ...computedAbsences].sort((a: any, b: any) =>
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+
+  return NextResponse.json(merged);
 }
