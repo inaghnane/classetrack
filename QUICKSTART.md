@@ -150,7 +150,7 @@ ClasseTrack/
 ✅ **Authentification NextAuth** avec RBAC (3 rôles)
 ✅ **QR Dynamique** : Token change toutes les 3 secondes (HMAC-SHA256)
 ✅ **Gestion des Absences** : Pointage QR avec validation
-✅ **Dashboard Admin** : CRUD complet (users, filières, groupes, modules, séances)
+✅ **Dashboard Admin** : CRUD complet (user, filière, groupe, module, séances)
 ✅ **Dashboard Prof** : Gestion séances + QR live + attendance
 ✅ **Dashboard Étudiant** : Scan + historique + mode offline
 ✅ **Mode Offline** : Sauvegarde locale + sync reconnexion

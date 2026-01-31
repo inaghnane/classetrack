@@ -1,0 +1,79 @@
+import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
+
+const prisma = new PrismaClient();
+
+async function main() {
+  console.log('🌱 Seeding database...');
+
+  const user = [
+    {
+      email: 'admin@gmail.com',
+      password: 'Admin@12345',
+      firstName: 'Admin',
+      lastName: 'System',
+      role: 'ADMIN' as const,
+    },
+    {
+      email: 'prof@classetrack.com',
+      password: 'Prof@12345',
+      firstName: 'Jean',
+      lastName: 'Dupont',
+      role: 'PROF' as const,
+    },
+    {
+      email: 'student@classetrack.com',
+      password: 'Student@12345',
+      firstName: 'Marie',
+      lastName: 'Martin',
+      role: 'STUDENT' as const,
+    },
+  ];
+
+  console.log('');
+  console.log('📝 Creating user...');
+  console.log('');
+
+  for (const userData of user) {
+    const passwordHash = await bcrypt.hash(userData.password, 10);
+
+    const user = await prisma.user.upsert({
+      where: { email: userData.email },
+      update: {
+        passwordHash,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        role: userData.role,
+      },
+      create: {
+        email: userData.email,
+        passwordHash,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        name: `${userData.firstName} ${userData.lastName}`,
+        role: userData.role,
+      },
+    });
+
+    console.log(`✅ ${user.role}: ${user.email} / ${userData.password}`);
+  }
+
+  console.log('');
+  console.log('🎉 Seed completed successfully!');
+  console.log('');
+  console.log('📋 Test Credentials:');
+  console.log('   Admin:   admin@gmail.com / Admin@12345');
+  console.log('   Prof:    prof@classetrack.com / Prof@12345');
+  console.log('   Student: student@classetrack.com / Student@12345');
+  console.log('');
+}
+
+main()
+  .catch((e) => {
+    console.error('❌ Seed error:', e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
+}

@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,139 +7,172 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum UserRole {
+model user {
+  id           String    @id @default(cuid()) @db.VarChar(25)
+  email        String    @unique @db.VarChar(191)
+  passwordHash String    @db.VarChar(255)
+  firstName    String    @db.VarChar(100)
+  lastName     String    @db.VarChar(100)
+  name         String?   @db.VarChar(191)
+  role         user_role @default(STUDENT)
+  deviceId     String?   @db.VarChar(100) // Device ID lié au compte (pour les étudiants)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  professorTeachings professorTeaching[]
+  enrollments        enrollment[]
+  attendances        attendance[]
+  justifications     justification[]
+
+  @@map("user")
+}
+
+enum user_role {
   ADMIN
   PROF
   STUDENT
 }
 
-enum SeanceStatus {
+model filiere {
+  id        String   @id @default(cuid()) @db.VarChar(25)
+  name      String   @unique @db.VarChar(191)
+  code      String   @unique @db.VarChar(50)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  groupe  groupe[]
+  modules module[]
+
+  @@map("filiere")
+}
+
+model groupe {
+  id         String   @id @default(cuid()) @db.VarChar(25)
+  name       String   @db.VarChar(191)
+  code       String   @unique @db.VarChar(50)
+  filiereId  String   @db.VarChar(25)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  filiere     filiere      @relation(fields: [filiereId], references: [id], onDelete: Cascade)
+  enrollments enrollment[]
+  seances     seance[]
+
+  @@map("groupe")
+}
+
+model module {
+  id        String   @id @default(cuid()) @db.VarChar(25)
+  name      String   @db.VarChar(191)
+  code      String   @unique @db.VarChar(50)
+  filiereId String   @db.VarChar(25)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  filiere           filiere             @relation(fields: [filiereId], references: [id], onDelete: Cascade)
+  seance            seance[]
+  professorTeachings professorTeaching[]
+
+  @@unique([name, filiereId])
+  @@map("module")
+}
+
+model professorTeaching {
+  id        String   @id @default(cuid()) @db.VarChar(25)
+  profId    String   @db.VarChar(25)
+  moduleId  String   @db.VarChar(25)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  professor user   @relation(fields: [profId], references: [id], onDelete: Cascade)
+  module    module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([profId, moduleId])
+  @@map("professorteaching")
+}
+
+model seance {
+  id        String        @id @default(cuid()) @db.VarChar(25)
+  date      DateTime
+  startTime String        @db.VarChar(10)
+  endTime   String        @db.VarChar(10)
+  status    seance_status @default(PLANNED)
+  qrSecret  String?       @db.VarChar(255)
+  qrFrozen  Boolean       @default(false) // Si true, le QR n'change pas
+  moduleId  String        @db.VarChar(25)
+  groupeId  String        @db.VarChar(25)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  module         module          @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  groupe         groupe          @relation(fields: [groupeId], references: [id], onDelete: Cascade)
+  attendances    attendance[]
+  justifications justification[]
+
+  @@map("seance")
+}
+
+enum seance_status {
   PLANNED
   OPEN
   CLOSED
 }
 
-enum AttendanceStatus {
-  PRESENT
-  ABSENT
-}
-
-enum AttendanceSource {
-  QR
-  MANUAL
-}
-
-model User {
-  id            String     @id @default(cuid())
-  email         String     @unique
-  passwordHash  String
-  firstName     String
-  lastName      String
-  role          UserRole   @default(STUDENT)
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-
-  // Relations
-  professedSeances Seance[]       @relation("Professor")
-  enrollments      Enrollment[]
-  attendances      Attendance[]
-
-  @@map("users")
-}
-
-model Filiere {
-  id        String   @id @default(cuid())
-  name      String   @unique
+model enrollment {
+  id        String   @id @default(cuid()) @db.VarChar(25)
+  studentId String   @db.VarChar(25)
+  groupeId  String   @db.VarChar(25)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
-  groupes  Groupe[]
-  modules  Module[]
-
-  @@map("filieres")
-}
-
-model Groupe {
-  id        String   @id @default(cuid())
-  name      String
-  filiereId String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  filiere   Filiere     @relation(fields: [filiereId], references: [id], onDelete: Cascade)
-  enrollments Enrollment[]
-  seances   Seance[]
-
-  @@unique([name, filiereId])
-  @@map("groupes")
-}
-
-model Module {
-  id        String   @id @default(cuid())
-  name      String
-  filiereId String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  filiere Filiere @relation(fields: [filiereId], references: [id], onDelete: Cascade)
-  seances Seance[]
-
-  @@unique([name, filiereId])
-  @@map("modules")
-}
-
-model Enrollment {
-  id        String   @id @default(cuid())
-  studentId String
-  groupeId  String
-  createdAt DateTime @default(now())
-
-  // Relations
-  student User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  groupe  Groupe @relation(fields: [groupeId], references: [id], onDelete: Cascade)
+  student user   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  groupe  groupe @relation(fields: [groupeId], references: [id], onDelete: Cascade)
 
   @@unique([studentId, groupeId])
-  @@map("enrollments")
+  @@map("enrollment")
 }
 
-model Seance {
-  id           String        @id @default(cuid())
-  moduleId     String
-  professorId  String
-  groupeId     String
-  startsAt     DateTime
-  endsAt       DateTime
-  room         String
-  status       SeanceStatus  @default(PLANNED)
-  qrSecret     String?       // Random secret for QR validation
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+model attendance {
+  id        String            @id @default(cuid()) @db.VarChar(25)
+  studentId String            @db.VarChar(25)
+  seanceId  String            @db.VarChar(25)
+  status    attendance_status @default(ABSENT)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
 
-  // Relations
-  module       Module        @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-  professor    User          @relation("Professor", fields: [professorId], references: [id], onDelete: Cascade)
-  groupe       Groupe        @relation(fields: [groupeId], references: [id], onDelete: Cascade)
-  attendances  Attendance[]
+  student user   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  seance  seance @relation(fields: [seanceId], references: [id], onDelete: Cascade)
 
-  @@map("seances")
+  @@unique([studentId, seanceId])
+  @@map("attendance")
 }
 
-model Attendance {
-  id        String             @id @default(cuid())
-  seanceId  String
-  studentId String
-  status    AttendanceStatus
-  source    AttendanceSource   @default(QR)
-  markedAt  DateTime           @default(now())
-  createdAt DateTime           @default(now())
+enum attendance_status {
+  PRESENT
+  ABSENT
+  LATE
+}
 
-  // Relations
-  seance    Seance             @relation(fields: [seanceId], references: [id], onDelete: Cascade)
-  student   User               @relation(fields: [studentId], references: [id], onDelete: Cascade)
+model justification {
+  id           String               @id @default(cuid()) @db.VarChar(25)
+  studentId    String               @db.VarChar(25)
+  seanceId     String               @db.VarChar(25)
+  reason       String               @db.Text
+  fileUrl      String?              @db.VarChar(500) // Chemin du fichier PDF ou image
+  status       justification_status @default(PENDING)
+  adminComment String?              @db.Text // Commentaire du professeur
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
 
-  @@unique([seanceId, studentId])
-  @@map("attendances")
+  student user   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  seance  seance @relation(fields: [seanceId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, seanceId])
+  @@map("justification")
+}
+
+enum justification_status {
+  PENDING
+  APPROVED
+  REJECTED
 }

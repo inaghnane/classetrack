@@ -20,7 +20,8 @@ export const authOptions: NextAuthOptions = {
           where: { email: credentials.email },
         });
 
-        if (!user) {
+        // ✅ important: si passwordHash est null/undefined => refuse
+        if (!user || !user.passwordHash) {
           return null;
         }
 
@@ -33,39 +34,51 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
+        // ✅ retourne aussi firstName/lastName pour l'utiliser partout
         return {
           id: user.id,
           email: user.email,
-          name: `${user.firstName} ${user.lastName}`,
+          name: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim(),
           role: user.role,
+          firstName: user.firstName,
+          lastName: user.lastName,
         };
       },
     }),
   ],
+
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
+        token.id = (user as any).id;
         token.role = (user as any).role;
-        token.id = user.id;
+        token.firstName = (user as any).firstName;
+        token.lastName = (user as any).lastName;
       }
       return token;
     },
+
     async session({ session, token }) {
       if (session.user) {
-        (session.user as any).role = token.role;
         (session.user as any).id = token.id;
+        (session.user as any).role = token.role;
+        (session.user as any).firstName = token.firstName;
+        (session.user as any).lastName = token.lastName;
       }
       return session;
     },
   },
+
   pages: {
     signIn: '/login',
     error: '/login',
   },
+
   session: {
     strategy: 'jwt',
-    maxAge: 24 * 60 * 60, // 24 hours
+    maxAge: 24 * 60 * 60,
   },
+
   secret: process.env.NEXTAUTH_SECRET,
 };
 

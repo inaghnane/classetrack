@@ -1,240 +1,323 @@
-# ClasseTrack - Gestion des Absences avec QR Code Dynamique
+# ClasseTrack - Système de Gestion des Absences
 
-Système de gestion des absences avec QR code dynamique pour établissements scolaires et universitaires.
+## 🚀 Recovery / First Run Guide
 
-## 🎯 Fonctionnalités
-
-- **Authentification** : NextAuth avec rôles (ADMIN, PROF, STUDENT)
-- **QR Codes Dynamiques** : Tokens qui changent toutes les 3 secondes (anti-partage)
-- **Gestion des Séances** : Ouverture/clôture par professeur
-- **Pointage d'Absences** : Scan QR ou validation manuelle
-- **Historique** : Suivi complet des présences/absences
-- **Mode Offline** : Support basique avec sync à la reconnexion
-
-## 📋 Prérequis
-
+### Prérequis
+- WAMP Stack (MySQL sur port 3306)
 - Node.js 18+
-- Docker & Docker Compose (optionnel mais recommandé)
-- MariaDB 10.5+ (ou MySQL 8.0+)
+- Database `classetrack` créée
 
-## 🚀 Installation
-
-### 1. Cloner et installer les dépendances
+### Installation Complète
 
 ```bash
-git clone <repo>
-cd classe-track
+# 1) Installer dépendances
 npm install
-```
 
-### 2. Configuration MariaDB
-
-**Avec Docker Compose (recommandé) :**
-
-```bash
-docker compose up -d
-```
-
-Cela lance MariaDB sur `localhost:3306` avec :
-- Base : `classe_track`
-- User : `root`
-- Password : `password`
-
-**Sans Docker :**
-
-Créer manuellement une base de données MariaDB :
-
-```sql
-CREATE DATABASE classe_track;
-```
-
-### 3. Configuration Variables d'Environnement
-
-```bash
+# 2) Créer .env.local
 cp .env.example .env.local
-```
+# Vérifier DATABASE_URL="mysql://root@127.0.0.1:3306/classetrack"
 
-Éditer `.env.local` :
+# 3) Créer la base de données (si pas fait)
+# Dans phpMyAdmin ou MySQL CLI:
+# CREATE DATABASE classetrack CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
-```
-DATABASE_URL="mysql://root:password@localhost:3306/classe_track"
-NEXTAUTH_SECRET="$(openssl rand -base64 32)"
-NEXTAUTH_URL="http://localhost:3000"
-```
-
-### 4. Migrations & Seed
-
-```bash
+# 4) Appliquer migrations Prisma
 npx prisma migrate dev --name init
+
+# 5) Générer Prisma Client
+npx prisma generate
+
+# 6) Seed database (créer user)
 npx prisma db seed
-```
 
-Cela crée :
-- **Admin** : `admin@example.com` / `admin123`
-- **Professeur** : `prof@example.com` / `prof123`
-- **Étudiants** : `student1@example.com` / `student123`, etc.
+# 7) Vérifier DB
+npm run db:check
+# Attendu: ✅ user in database: 3
 
-### 5. Lancer le serveur
+# 8) (Optionnel) Reset admin password
+npm run reset:admin
 
-```bash
+# 9) Lancer dev server
 npm run dev
 ```
 
-L'application est accessible sur `http://localhost:3000`
+### 🔐 Credentials par défaut
 
-## 📁 Structure du Projet
+| Rôle | Email | Password |
+|------|-------|----------|
+| Admin | admin@gmail.com | Admin@12345 |
+| Prof | prof@classetrack.com | Prof@12345 |
+| Student | student@classetrack.com | Student@12345 |
+
+### ✅ Checklist de Vérification
+
+- [ ] `npm run db:check` affiche `✅ user: 3`
+- [ ] Prisma Studio (`npx prisma studio`) contient 3 user
+- [ ] Login sur `http://localhost:3000/login` fonctionne
+- [ ] Admin peut se connecter avec `admin@gmail.com / Admin@12345`
+
+---
+
+## 🛠️ Scripts Utiles
+
+```bash
+# Vérifier connexion DB
+npm run db:check
+
+# Réinitialiser admin password
+npm run reset:admin
+
+# Prisma Studio (UI graphique)
+npx prisma studio
+
+# Reset complet DB (⚠️ supprime tout)
+npx prisma migrate reset
+
+# Refaire seed uniquement
+npx prisma db seed
+```
+
+---
+
+## 🔧 Reset Database (Development Only)
+
+Si vous voulez remettre la base à zéro :
+
+```bash
+# ⚠️ ATTENTION: Supprime toutes les données
+npx prisma migrate reset
+
+# Regénérer Prisma Client
+npx prisma generate
+
+# Refaire le seed
+npx prisma db seed
+
+# Vérifier
+npm run db:check
+```
+
+**Note:** `npx prisma migrate reset` :
+- Supprime la base de données
+- Recrée la base de données
+- Applique toutes les migrations
+- Lance le seed automatiquement
+
+---
+
+## ⚠️ Troubleshooting Windows
+
+### Erreur EPERM sur query_engine
+
+```bash
+# 1) Arrêter Next.js (Ctrl+C)
+# 2) Fermer Prisma Studio si ouvert
+# 3) Supprimer cache Prisma
+Remove-Item -Recurse -Force node_module\.prisma
+
+# 4) Regénérer
+npx prisma generate
+
+# 5) Relancer
+npm run dev
+```
+
+### Erreur "Connection refused"
+
+```bash
+# Vérifier que MySQL WAMP est lancé
+# Vérifier DATABASE_URL dans .env.local
+npm run db:check
+```
+
+### Erreur Login 401
+
+```bash
+# 1) Vérifier que user existent
+npm run db:check
+
+# 2) Reset admin password
+npm run reset:admin
+
+# 3) Tester avec admin@gmail.com / Admin@12345
+
+# 4) Regarder logs serveur (Terminal où tourne npm run dev)
+# Chercher "AUTH:" dans les logs
+```
+
+### Seed échoue (TS2322)
+
+```bash
+# Vérifier que schema.prisma est correct
+# Supprimer migrations
+Remove-Item -Recurse -Force prisma\migrations
+
+# Recréer migration
+npx prisma migrate dev --name init
+
+# Refaire seed
+npx prisma db seed
+```
+
+---
+
+## 📁 Structure Projet
 
 ```
-.
-├── app/                        # Next.js App Router
-│   ├── api/                   # Route Handlers API
-│   │   ├── auth/             # NextAuth
-│   │   ├── admin/            # Admin endpoints
-│   │   ├── prof/             # Professor endpoints
-│   │   └── student/          # Student endpoints
-│   ├── admin/                 # Admin pages
-│   ├── prof/                  # Professor pages
-│   ├── student/               # Student pages
-│   ├── login/                 # Login page
-│   └── layout.tsx             # Root layout
-├── components/                 # React components
-│   ├── OfflineSyncBanner.tsx
-│   └── ...
-├── lib/                        # Utilities
-│   ├── auth.ts               # NextAuth configuration
-│   ├── qr-generator.ts       # QR Token generation
-│   ├── validation.ts         # Input validation
-│   └── db.ts                 # Prisma client
+classetrack/
+├── src/
+│   ├── app/
+│   │   ├── api/auth/[...nextauth]/route.ts  # NextAuth handler
+│   │   ├── login/                            # Page login
+│   │   └── ...
+│   ├── lib/auth.ts                          # NextAuth config
+│   └── types/index.ts                       # Types
 ├── prisma/
-│   ├── schema.prisma         # Database schema
-│   └── seed.ts               # Database seeding
-├── public/                     # Static files
-├── .env.example               # Environment template
-├── docker-compose.yml         # Docker configuration
-├── package.json
-├── tsconfig.json
-├── next.config.js
-├── tailwind.config.js
-└── README.md
+│   ├── schema.prisma                        # Schema DB
+│   └── seed.ts                              # Seed data
+├── scripts/
+│   ├── db-check.js                          # Vérifier DB
+│   └── reset-admin-password.js              # Reset admin
+├── .env.local                               # Config locale
+├── .env.example                             # Template
+└── README.md                                # Cette doc
 ```
 
-## 🔐 Sécurité
+---
 
-- Mots de passe hashés avec bcrypt
-- Tokens CSRF pour formulaires
-- Validation des inputs avec Zod
-- Middleware RBAC pour routes protégées
-- QR tokens avec HMAC-SHA256
+## 🎯 Stack
 
-## 🧠 Règles Métier
+- **Framework:** Next.js 14 (App Router)
+- **Auth:** NextAuth.js
+- **Database:** Prisma + MySQL (WAMP)
+- **Styling:** Tailwind CSS
+- **Password:** bcryptjs
 
-### QR Code Dynamique
+---
 
-- Token valide 3 secondes
-- Base : `seanceId.epochWindow.hmac(qrSecret, seanceId|epochWindow)`
-- Tolérance : ±1 fenêtre (6 secondes max)
-
-### Pointage d'Absence
-
-- Un seul pointage par étudiant par séance
-- Étudiant doit appartenir au groupe de la séance
-- Source : QR automatique ou MANUAL (admin)
-
-### Mode Offline
-
-- Stockage local des scans (localStorage)
-- Sync automatique à la reconnexion via `/api/student/scan`
-
-## 📚 API Principales
-
-### Authentification
-
-- `POST /api/auth/callback/credentials` : Login
-- `GET /api/me` : Données session actuelles
-
-### Admin
-
-- `GET/POST /api/admin/users` : CRUD utilisateurs
-- `GET/POST /api/admin/filieres` : CRUD filières
-- `GET/POST /api/admin/groupes` : CRUD groupes
-- `GET/POST /api/admin/modules` : CRUD modules
-- `GET/POST /api/admin/seances` : CRUD séances
-
-### Professeur
-
-- `GET /api/prof/seances` : Lister ses séances
-- `POST /api/prof/seances/[id]/open` : Ouvrir une séance
-- `POST /api/prof/seances/[id]/close` : Clôturer
-- `GET /api/prof/seances/[id]/attendance` : Présences/absences
-
-### Étudiant
-
-- `GET /api/student/seances` : Ses séances
-- `POST /api/student/scan` : Marquer présence (QR ou token)
-- `GET /api/student/attendance` : Historique
-
-## 🛠️ Commandes Utiles
-
-```bash
-# Studio Prisma (visualiser DB)
-npm run prisma:studio
-
-# Nouvelle migration
-npx prisma migrate dev --name <description>
-
-# Reset DB (attention !)
-npx prisma migrate reset
-
-# Générer types Prisma
-npm run prisma:generate
-```
-
-## 🧪 Comptes de Test
-
-Après seed, les comptes suivants sont disponibles :
-
-| Email | Mot de passe | Rôle |
-|-------|-------------|------|
-| admin@example.com | admin123 | ADMIN |
-| prof@example.com | prof123 | PROF |
-| student1@example.com | student123 | STUDENT |
-| student2@example.com | student123 | STUDENT |
-| student3@example.com | student123 | STUDENT |
-
-## 🐳 Docker Compose
-
-```bash
-# Démarrer MariaDB
-docker compose up -d
-
-# Arrêter
-docker compose down
-
-# Voir les logs
-docker compose logs -f mariadb
-```
-
-## ❓ Dépannage
-
-**Erreur de connexion DB** :
-- Vérifier que MariaDB est actif : `docker compose ps`
-- Vérifier la variable `DATABASE_URL` dans `.env.local`
-
-**Prisma migration échouée** :
-```bash
-npx prisma migrate reset
-npm run prisma:seed
-```
-
-**Port 3000 occupé** :
-```bash
-npm run dev -- -p 3001
-```
-
-## 📝 Licence
+## 📄 Licence
 
 MIT
 
-## 👤 Support
+## 🔄 Local vs Cloudflare Tunnel
 
-Pour les questions ou bugs, ouvrir une issue.
+### Développement Local (Recommandé)
+
+```bash
+# .env
+NEXTAUTH_URL="http://localhost:3000"
+
+# Lancer
+npm run dev
+
+# Accès
+http://localhost:3000
+```
+
+### Avec Cloudflare Tunnel
+
+```bash
+# Terminal 1: Next.js
+npm run dev
+
+# Terminal 2: Cloudflare
+cloudflared tunnel --url http://localhost:3000
+# Copier l'URL: https://xxxxx.trycloudflare.com
+
+# Mettre à jour .env
+NEXTAUTH_URL="https://xxxxx.trycloudflare.com"
+
+# Redémarrer Next.js (Terminal 1)
+# Ctrl+C puis npm run dev
+
+# Accès
+https://xxxxx.trycloudflare.com
+```
+
+**Note:** L'URL Cloudflare change à chaque redémarrage du tunnel.
+
+---
+
+## 🛠️ Fix MySQL Error 1071 (Key Length)
+
+Si `npx prisma migrate reset` échoue avec "La clé est trop longue":
+
+### Vérifier les tables
+
+```bash
+npm run db:check-innodb
+```
+
+### Convertir en InnoDB si nécessaire
+
+```sql
+-- Dans phpMyAdmin ou MySQL CLI
+ALTER TABLE `user` ENGINE=InnoDB;
+ALTER TABLE `filiere` ENGINE=InnoDB;
+ALTER TABLE `groupe` ENGINE=InnoDB;
+-- etc.
+```
+
+### Ou reset complet
+
+```bash
+# Supprimer migrations
+Remove-Item -Recurse -Force prisma\migrations
+
+# Recréer migration
+npx prisma migrate dev --name init_full_schema
+```
+
+---
+
+## ⚙️ Prisma Model Names
+
+Le projet utilise:
+- `prisma.user` (table: `user`)
+- `prisma.filiere` (table: `filiere`)
+- `prisma.groupe` (table: `groupe`) ⚠️ **singulier**
+- `prisma.module` (table: `module`)
+- `prisma.enrollment` (table: `enrollment`)
+- `prisma.seance` (table: `seance`)
+- `prisma.attendance` (table: `attendance`)
+- `prisma.justification` (table: `justification`)
+
+---
+
+## 📁 Structure Projet
+
+```
+classetrack/
+├── src/
+│   ├── app/
+│   │   ├── api/auth/[...nextauth]/route.ts  # NextAuth handler
+│   │   ├── login/                            # Page login
+│   │   └── ...
+│   ├── lib/auth.ts                          # NextAuth config
+│   └── types/index.ts                       # Types
+├── prisma/
+│   ├── schema.prisma                        # Schema DB
+│   └── seed.ts                              # Seed data
+├── scripts/
+│   ├── db-check.js                          # Vérifier DB
+│   └── reset-admin-password.js              # Reset admin
+├── .env.local                               # Config locale
+├── .env.example                             # Template
+└── README.md                                # Cette doc
+```
+
+---
+
+## 🎯 Stack
+
+- **Framework:** Next.js 14 (App Router)
+- **Auth:** NextAuth.js
+- **Database:** Prisma + MySQL (WAMP)
+- **Styling:** Tailwind CSS
+- **Password:** bcryptjs
+
+---
+
+## 📄 Licence
+
+MIT

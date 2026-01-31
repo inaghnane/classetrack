@@ -1,44 +1,83 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import { getOrCreateDeviceId } from '@/lib/device';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isClient, setIsClient] = useState(false);
   const router = useRouter();
+
+  // S'assurer que localStorage est accessible côté client
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
 
-    const result = await signIn('credentials', {
-      email,
-      password,
-      redirect: false,
-    });
+    try {
+      const result = await signIn('credentials', {
+        email,
+        password,
+        redirect: false,
+      });
 
-    if (!result?.ok) {
-      setError('Email ou mot de passe incorrect');
+      if (!result?.ok) {
+        setError('Email ou mot de passe incorrect');
+        setIsLoading(false);
+        return;
+      }
+
+      // Récupérer les informations de l'utilisateur
+      const res = await fetch('/api/me');
+      const user = await res.json();
+
+      // Pour les ÉTUDIANTS: vérifier la restriction d'appareil
+      if (user.role === 'STUDENT' && isClient) {
+        try {
+          const deviceId = getOrCreateDeviceId();
+          
+          const deviceRes = await fetch('/api/student/validate-device', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              studentId: user.id,
+              deviceId,
+            }),
+          });
+
+          if (!deviceRes.ok) {
+            const deviceError = await deviceRes.json();
+            setError(`🔒 Accès refusé: ${deviceError.error}`);
+            setIsLoading(false);
+            return;
+          }
+        } catch (deviceErr) {
+          console.error('Device validation error:', deviceErr);
+          // Continue même si erreur device (fallback)
+        }
+      }
+
+      // Redirect based on role
+      const redirectPath = {
+        ADMIN: '/admin',
+        PROF: '/prof',
+        STUDENT: '/student',
+      }[user.role] || '/';
+
+      router.push(redirectPath);
+    } catch (err: any) {
+      setError('Erreur lors de la connexion: ' + err.message);
       setIsLoading(false);
-      return;
     }
-
-    // Redirect based on role
-    const res = await fetch('/api/me');
-    const user = await res.json();
-
-    const redirectPath = {
-      ADMIN: '/admin',
-      PROF: '/prof',
-      STUDENT: '/student',
-    }[user.role] || '/';
-
-    router.push(redirectPath);
   };
 
   return (
@@ -100,9 +139,9 @@ export default function LoginPage() {
             Comptes de test :
           </p>
           <ul className="text-xs text-gray-600 space-y-1">
-            <li>Admin: admin@example.com / admin123</li>
-            <li>Prof: prof@example.com / prof123</li>
-            <li>Student: student1@example.com / student123</li>
+            <li>Admin: admin@gmail.com / Admin@12345</li>
+            <li>Prof: prof@classetrack.com / Prof@12345</li>
+            <li>Student: student@classetrack.com / Student@12345</li>
           </ul>
         </div>
       </div>

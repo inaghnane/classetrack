@@ -19,14 +19,23 @@ export async function GET(request: NextRequest) {
 
   const professorId = (session.user as any).id;
 
+  // Get modules taught by this professor
+  const teachings = await prisma.professorTeaching.findMany({
+    where: { profId: professorId },
+    select: { moduleId: true },
+  });
+
+  const moduleIds = teachings.map((t) => t.moduleId);
+
+  // Get seances for these modules
   const seances = await prisma.seance.findMany({
-    where: { professorId },
+    where: { moduleId: { in: moduleIds } },
     include: {
       module: true,
       groupe: { include: { filiere: true } },
       attendances: { select: { id: true, studentId: true, status: true } },
     },
-    orderBy: { startsAt: 'asc' },
+    orderBy: { date: 'asc' },
   });
 
   return NextResponse.json(seances);

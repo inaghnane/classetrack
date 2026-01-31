@@ -13,17 +13,17 @@ USE classetrack;
 -- Drop existing tables (in reverse order of dependencies)
 -- =====================================================
 DROP TABLE IF EXISTS `attendances`;
-DROP TABLE IF EXISTS `seances`;
-DROP TABLE IF EXISTS `enrollments`;
-DROP TABLE IF EXISTS `modules`;
-DROP TABLE IF EXISTS `groupes`;
-DROP TABLE IF EXISTS `filieres`;
-DROP TABLE IF EXISTS `users`;
+DROP TABLE IF EXISTS `seance`;
+DROP TABLE IF EXISTS `enrollment`;
+DROP TABLE IF EXISTS `module`;
+DROP TABLE IF EXISTS `groupe`;
+DROP TABLE IF EXISTS `filiere`;
+DROP TABLE IF EXISTS `user`;
 
 -- =====================================================
--- Table: users
+-- Table: user
 -- =====================================================
-CREATE TABLE `users` (
+CREATE TABLE `user` (
     `id` VARCHAR(191) NOT NULL,
     `email` VARCHAR(191) NOT NULL,
     `passwordHash` VARCHAR(255) NOT NULL,
@@ -34,48 +34,27 @@ CREATE TABLE `users` (
     `updatedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     
     PRIMARY KEY (`id`),
-    UNIQUE KEY `users_email_unique` (`email`),
-    INDEX `users_role_idx` (`role`)
+    UNIQUE KEY `user_email_unique` (`email`),
+    INDEX `user_role_idx` (`role`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================
--- Table: filieres
+-- Table: filiere
 -- =====================================================
-CREATE TABLE `filieres` (
+CREATE TABLE `filiere` (
     `id` VARCHAR(191) NOT NULL,
     `name` VARCHAR(191) NOT NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     
     PRIMARY KEY (`id`),
-    UNIQUE KEY `filieres_name_unique` (`name`)
+    UNIQUE KEY `filiere_name_unique` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================
--- Table: groupes
+-- Table: groupe
 -- =====================================================
-CREATE TABLE `groupes` (
-    `id` VARCHAR(191) NOT NULL,
-    `name` VARCHAR(191) NOT NULL,
-    `filiereId` VARCHAR(191) NOT NULL,
-    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    `updatedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-    
-    PRIMARY KEY (`id`),
-    UNIQUE KEY `groupes_name_filiereId_unique` (`name`, `filiereId`),
-    INDEX `groupes_filiereId_idx` (`filiereId`),
-    
-    CONSTRAINT `groupes_filiereId_fkey` 
-        FOREIGN KEY (`filiereId`) 
-        REFERENCES `filieres`(`id`) 
-        ON DELETE CASCADE 
-        ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- =====================================================
--- Table: modules
--- =====================================================
-CREATE TABLE `modules` (
+CREATE TABLE `groupe` (
     `id` VARCHAR(191) NOT NULL,
     `name` VARCHAR(191) NOT NULL,
     `filiereId` VARCHAR(191) NOT NULL,
@@ -83,47 +62,68 @@ CREATE TABLE `modules` (
     `updatedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     
     PRIMARY KEY (`id`),
-    UNIQUE KEY `modules_name_filiereId_unique` (`name`, `filiereId`),
-    INDEX `modules_filiereId_idx` (`filiereId`),
+    UNIQUE KEY `groupe_name_filiereId_unique` (`name`, `filiereId`),
+    INDEX `groupe_filiereId_idx` (`filiereId`),
     
-    CONSTRAINT `modules_filiereId_fkey` 
+    CONSTRAINT `groupe_filiereId_fkey` 
         FOREIGN KEY (`filiereId`) 
-        REFERENCES `filieres`(`id`) 
+        REFERENCES `filiere`(`id`) 
         ON DELETE CASCADE 
         ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================
--- Table: enrollments
+-- Table: module
 -- =====================================================
-CREATE TABLE `enrollments` (
+CREATE TABLE `module` (
+    `id` VARCHAR(191) NOT NULL,
+    `name` VARCHAR(191) NOT NULL,
+    `filiereId` VARCHAR(191) NOT NULL,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updatedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `module_name_filiereId_unique` (`name`, `filiereId`),
+    INDEX `module_filiereId_idx` (`filiereId`),
+    
+    CONSTRAINT `module_filiereId_fkey` 
+        FOREIGN KEY (`filiereId`) 
+        REFERENCES `filiere`(`id`) 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =====================================================
+-- Table: enrollment
+-- =====================================================
+CREATE TABLE `enrollment` (
     `id` VARCHAR(191) NOT NULL,
     `studentId` VARCHAR(191) NOT NULL,
     `groupeId` VARCHAR(191) NOT NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     
     PRIMARY KEY (`id`),
-    UNIQUE KEY `enrollments_studentId_groupeId_unique` (`studentId`, `groupeId`),
-    INDEX `enrollments_studentId_idx` (`studentId`),
-    INDEX `enrollments_groupeId_idx` (`groupeId`),
+    UNIQUE KEY `enrollment_studentId_groupeId_unique` (`studentId`, `groupeId`),
+    INDEX `enrollment_studentId_idx` (`studentId`),
+    INDEX `enrollment_groupeId_idx` (`groupeId`),
     
-    CONSTRAINT `enrollments_studentId_fkey` 
+    CONSTRAINT `enrollment_studentId_fkey` 
         FOREIGN KEY (`studentId`) 
-        REFERENCES `users`(`id`) 
+        REFERENCES `user`(`id`) 
         ON DELETE CASCADE 
         ON UPDATE CASCADE,
     
-    CONSTRAINT `enrollments_groupeId_fkey` 
+    CONSTRAINT `enrollment_groupeId_fkey` 
         FOREIGN KEY (`groupeId`) 
-        REFERENCES `groupes`(`id`) 
+        REFERENCES `groupe`(`id`) 
         ON DELETE CASCADE 
         ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================
--- Table: seances
+-- Table: seance
 -- =====================================================
-CREATE TABLE `seances` (
+CREATE TABLE `seance` (
     `id` VARCHAR(191) NOT NULL,
     `moduleId` VARCHAR(191) NOT NULL,
     `professorId` VARCHAR(191) NOT NULL,
@@ -137,27 +137,27 @@ CREATE TABLE `seances` (
     `updatedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     
     PRIMARY KEY (`id`),
-    INDEX `seances_moduleId_idx` (`moduleId`),
-    INDEX `seances_professorId_idx` (`professorId`),
-    INDEX `seances_groupeId_idx` (`groupeId`),
-    INDEX `seances_status_idx` (`status`),
-    INDEX `seances_startsAt_idx` (`startsAt`),
+    INDEX `seance_moduleId_idx` (`moduleId`),
+    INDEX `seance_professorId_idx` (`professorId`),
+    INDEX `seance_groupeId_idx` (`groupeId`),
+    INDEX `seance_status_idx` (`status`),
+    INDEX `seance_startsAt_idx` (`startsAt`),
     
-    CONSTRAINT `seances_moduleId_fkey` 
+    CONSTRAINT `seance_moduleId_fkey` 
         FOREIGN KEY (`moduleId`) 
-        REFERENCES `modules`(`id`) 
+        REFERENCES `module`(`id`) 
         ON DELETE CASCADE 
         ON UPDATE CASCADE,
     
-    CONSTRAINT `seances_professorId_fkey` 
+    CONSTRAINT `seance_professorId_fkey` 
         FOREIGN KEY (`professorId`) 
-        REFERENCES `users`(`id`) 
+        REFERENCES `user`(`id`) 
         ON DELETE CASCADE 
         ON UPDATE CASCADE,
     
-    CONSTRAINT `seances_groupeId_fkey` 
+    CONSTRAINT `seance_groupeId_fkey` 
         FOREIGN KEY (`groupeId`) 
-        REFERENCES `groupes`(`id`) 
+        REFERENCES `groupe`(`id`) 
         ON DELETE CASCADE 
         ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -182,13 +182,13 @@ CREATE TABLE `attendances` (
     
     CONSTRAINT `attendances_seanceId_fkey` 
         FOREIGN KEY (`seanceId`) 
-        REFERENCES `seances`(`id`) 
+        REFERENCES `seance`(`id`) 
         ON DELETE CASCADE 
         ON UPDATE CASCADE,
     
     CONSTRAINT `attendances_studentId_fkey` 
         FOREIGN KEY (`studentId`) 
-        REFERENCES `users`(`id`) 
+        REFERENCES `user`(`id`) 
         ON DELETE CASCADE 
         ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -199,7 +199,7 @@ CREATE TABLE `attendances` (
 
 -- Sample Admin User (password: admin123)
 -- You should change this password in production
-INSERT INTO `users` (`id`, `email`, `passwordHash`, `firstName`, `lastName`, `role`) VALUES
+INSERT INTO `user` (`id`, `email`, `passwordHash`, `firstName`, `lastName`, `role`) VALUES
 ('admin001', 'admin@classetrack.com', '$2a$10$YourHashedPasswordHere', 'Admin', 'System', 'ADMIN');
 
 -- =====================================================
