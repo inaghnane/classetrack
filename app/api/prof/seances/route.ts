@@ -3,7 +3,7 @@ import { authOptions } from '@/lib/auth';
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 
-async function requireProf(request: NextRequest) {
+async function requireProf(_request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session || (session.user as any)?.role !== 'PROF') {
     return null;
@@ -19,17 +19,8 @@ export async function GET(request: NextRequest) {
 
   const professorId = (session.user as any).id;
 
-  // Get modules taught by this professor
-  const teachings = await prisma.professorTeaching.findMany({
-    where: { profId: professorId },
-    select: { moduleId: true },
-  });
-
-  const moduleIds = teachings.map((t) => t.moduleId);
-
-  // Get seances for these modules
   const seances = await prisma.seance.findMany({
-    where: { moduleId: { in: moduleIds } },
+    where: { profId: professorId },
     include: {
       module: true,
       groupe: { include: { filiere: true } },
@@ -37,6 +28,7 @@ export async function GET(request: NextRequest) {
     },
     orderBy: { date: 'asc' },
   });
+
 
   return NextResponse.json(seances);
 }

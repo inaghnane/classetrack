@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/db';
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session || (session.user as any)?.role !== 'STUDENT') {
@@ -12,51 +12,50 @@ export async function GET(req: NextRequest) {
 
     const studentId = (session.user as any).id;
 
-    // Récupérer l'étudiant avec ses enrollments pour accéder à sa filière via le groupe
-    const student = await prisma.user.findUnique({
-      where: { id: studentId },
+    // Récupérer les inscriptions (groupes) de l'étudiant
+    const enrollments = await prisma.enrollment.findMany({
+      where: { studentId },
       include: {
-        enrollments: {
+        groupe: {
           include: {
-            groupe: {
-              include: {
-                filiere: {
-                  include: {
-                    modules: {
-                      include: {
-                        seance: {
-                          include: {
-                            groupe: true,
-                          },
-                          where: {
-                            status: {
-                              in: ['OPEN', 'CLOSED'],
-                            },
-                          },
-                          orderBy: {
-                            date: 'desc',
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
+            filiere: true,
           },
         },
       },
     });
 
-    if (!student || !student.enrollments.length) {
+    if (!enrollments.length) {
       return NextResponse.json({ error: 'Student not enrolled in any groupe' }, { status: 404 });
     }
 
-    // Récupérer la filière du premier enrollment (tous les enrollments devraient être dans la même filière)
-    const filiere = student.enrollments[0].groupe.filiere;
+    const groupeIds = enrollments.map((e) => e.groupeId);
+    const filiere = enrollments[0].groupe.filiere;
 
-    // Organiser les données par module
-    const modules = filiere.modules.map((module: any) => ({
+    // Récupérer uniquement les modules de la filière + séances du/des groupe(s) de l'étudiant
+    const modules = await prisma.module.findMany({
+      where: {
+        filiereId: filiere.id,
+      },
+      include: {
+        seance: {
+          where: {
+            status: { in: ['PLANNED', 'OPEN', 'CLOSED'] },
+            groupeId: { in: groupeIds },
+          },
+          include: {
+            groupe: true,
+          },
+          orderBy: {
+            date: 'desc',
+          },
+        },
+      },
+      orderBy: {
+        name: 'asc',
+      },
+    });
+
+    const formattedModules = modules.map((module: any) => ({
       id: module.id,
       name: module.name,
       code: module.code,
@@ -77,7 +76,7 @@ export async function GET(req: NextRequest) {
         name: filiere.name,
         code: filiere.code,
       },
-      modules,
+      modules: formattedModules,
     };
 
     return NextResponse.json(result);

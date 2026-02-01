@@ -20,8 +20,8 @@ const menuItems: Record<string, MenuItem[]> = {
     { label: 'Utilisateurs', href: '/admin/user' },
     { label: 'Import', href: '/admin/import' },
     { label: 'filière', href: '/admin/filiere' },
-    { label: 'groupe', href: '/admin/groupe' },
     { label: 'module', href: '/admin/module' },
+    { label: 'groupe', href: '/admin/groupe' },
     { label: 'Séances', href: '/admin/seance' }
   ],
   PROF: [

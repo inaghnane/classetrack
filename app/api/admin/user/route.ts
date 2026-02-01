@@ -13,7 +13,7 @@ async function requireAdmin() {
   return session;
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
 const session = await requireAdmin();
   if (!session) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -27,6 +27,21 @@ const session = await requireAdmin();
       lastName: true,
       role: true,
       createdAt: true,
+      professorAssignments: {
+        include: {
+          module: { include: { filiere: true } },
+          groupe: true,
+        },
+      },
+      professorTeachings: {
+        include: {
+          module: {
+            include: {
+              filiere: true,
+            },
+          },
+        },
+      },
     },
   });
 

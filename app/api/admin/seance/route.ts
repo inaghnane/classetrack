@@ -22,6 +22,7 @@ const session = await requireAdmin();
     include: {
       module: true,
       groupe: { include: { filiere: true } },
+      professor: { select: { id: true, firstName: true, lastName: true, email: true } },
     },
     orderBy: { date: 'asc' },
   });
@@ -38,10 +39,40 @@ const session = await requireAdmin();
     const body = await request.json();
     const validated = createSeanceSchema.parse(body);
 
+    // Récupérer le module pour obtenir le filiereId
+    const module = await prisma.module.findUnique({
+      where: { id: validated.moduleId },
+      select: { filiereId: true },
+    });
+
+    if (!module) {
+      return NextResponse.json(
+        { error: 'Module not found' },
+        { status: 400 }
+      );
+    }
+
+    const assignment = await prisma.professorAssignment.findFirst({
+      where: {
+        profId: validated.profId,
+        moduleId: validated.moduleId,
+        groupeId: validated.groupeId,
+      },
+    });
+
+    if (!assignment) {
+      return NextResponse.json(
+        { error: 'Le professeur n\'est pas assigné à ce module/groupe' },
+        { status: 400 }
+      );
+    }
+
     const seance = await prisma.seance.create({
       data: {
         moduleId: validated.moduleId,
         groupeId: validated.groupeId,
+        filiereId: module.filiereId,
+        profId: validated.profId,
         date: validated.date,
         startTime: validated.startTime,
         endTime: validated.endTime,
@@ -49,6 +80,8 @@ const session = await requireAdmin();
       include: {
         module: true,
         groupe: { include: { filiere: true } },
+        filiere: true,
+        professor: { select: { id: true, firstName: true, lastName: true, email: true } },
       },
     });
 

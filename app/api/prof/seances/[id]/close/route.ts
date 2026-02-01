@@ -3,7 +3,7 @@ import { authOptions } from '@/lib/auth';
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 
-async function requireProf(request: NextRequest) {
+async function requireProf(_request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session || (session.user as any)?.role !== 'PROF') {
     return null;
@@ -33,6 +33,15 @@ export async function POST(
       return NextResponse.json(
         { error: 'Seance is not in OPEN status' },
         { status: 400 }
+      );
+    }
+
+    const profId = (session.user as any).id;
+
+    if (!seance.profId || seance.profId !== profId) {
+      return NextResponse.json(
+        { error: 'Seance is assigned to another professor' },
+        { status: 403 }
       );
     }
 

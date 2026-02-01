@@ -8,21 +8,24 @@ datasource db {
 }
 
 model user {
-  id           String    @id @default(cuid()) @db.VarChar(25)
-  email        String    @unique @db.VarChar(191)
-  passwordHash String    @db.VarChar(255)
-  firstName    String    @db.VarChar(100)
-  lastName     String    @db.VarChar(100)
-  name         String?   @db.VarChar(191)
-  role         user_role @default(STUDENT)
-  deviceId     String?   @db.VarChar(100) // Device ID lié au compte (pour les étudiants)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id                String    @id @default(cuid()) @db.VarChar(25)
+  email             String    @unique @db.VarChar(191)
+  passwordHash      String    @db.VarChar(255)
+  firstName         String    @db.VarChar(100)
+  lastName          String    @db.VarChar(100)
+  name              String?   @db.VarChar(191)
+  role              user_role @default(STUDENT)
+  deviceId          String?   @db.VarChar(100) // Device ID lié au compte (pour les étudiants)
+  mustChangePassword Boolean  @default(false) // Si true, l'utilisateur doit changer son mot de passe à la prochaine connexion
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  professorTeachings professorTeaching[]
-  enrollments        enrollment[]
-  attendances        attendance[]
-  justifications     justification[]
+  professorTeachings  professorTeaching[]
+  professorAssignments professorAssignment[]
+  enrollments         enrollment[]
+  attendances         attendance[]
+  justifications      justification[]
+  teachingSeances     seance[] @relation("ProfSeances")
 
   @@map("user")
 }
@@ -42,6 +45,7 @@ model filiere {
 
   groupe  groupe[]
   modules module[]
+  seances seance[]
 
   @@map("filiere")
 }
@@ -54,9 +58,10 @@ model groupe {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  filiere     filiere      @relation(fields: [filiereId], references: [id], onDelete: Cascade)
-  enrollments enrollment[]
-  seances     seance[]
+  filiere      filiere      @relation(fields: [filiereId], references: [id], onDelete: Cascade)
+  enrollments  enrollment[]
+  seances      seance[]
+  professorAssignments professorAssignment[]
 
   @@map("groupe")
 }
@@ -69,9 +74,10 @@ model module {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  filiere           filiere             @relation(fields: [filiereId], references: [id], onDelete: Cascade)
-  seance            seance[]
+  filiere            filiere             @relation(fields: [filiereId], references: [id], onDelete: Cascade)
+  seance             seance[]
   professorTeachings professorTeaching[]
+  professorAssignments professorAssignment[]
 
   @@unique([name, filiereId])
   @@map("module")
@@ -91,6 +97,22 @@ model professorTeaching {
   @@map("professorteaching")
 }
 
+model professorAssignment {
+  id        String   @id @default(cuid()) @db.VarChar(25)
+  profId    String   @db.VarChar(25)
+  moduleId  String   @db.VarChar(25)
+  groupeId  String   @db.VarChar(25)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  professor user   @relation(fields: [profId], references: [id], onDelete: Cascade)
+  module    module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  groupe    groupe @relation(fields: [groupeId], references: [id], onDelete: Cascade)
+
+  @@unique([profId, moduleId, groupeId])
+  @@map("professorassignment")
+}
+
 model seance {
   id        String        @id @default(cuid()) @db.VarChar(25)
   date      DateTime
@@ -99,13 +121,18 @@ model seance {
   status    seance_status @default(PLANNED)
   qrSecret  String?       @db.VarChar(255)
   qrFrozen  Boolean       @default(false) // Si true, le QR n'change pas
+  confirmed Boolean       @default(false) // Si true, le prof a confirmé la séance
+  filiereId String        @db.VarChar(25)
   moduleId  String        @db.VarChar(25)
   groupeId  String        @db.VarChar(25)
+  profId   String?        @db.VarChar(25)
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
 
+  filiere        filiere         @relation(fields: [filiereId], references: [id], onDelete: Cascade)
   module         module          @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   groupe         groupe          @relation(fields: [groupeId], references: [id], onDelete: Cascade)
+  professor      user?           @relation("ProfSeances", fields: [profId], references: [id], onDelete: SetNull)
   attendances    attendance[]
   justifications justification[]
 

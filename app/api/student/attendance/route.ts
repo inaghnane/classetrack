@@ -3,7 +3,7 @@ import { authOptions } from '@/lib/auth';
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 
-async function requireStudent(request: NextRequest) {
+async function requireStudent(_request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session || (session.user as any)?.role !== 'STUDENT') {
     return null;
@@ -19,8 +19,31 @@ export async function GET(request: NextRequest) {
 
   const studentId = (session.user as any).id;
 
-  const attendances = await prisma.attendance.findMany({
+  // Récupérer les groupes de l'étudiant
+  const enrollments = await prisma.enrollment.findMany({
     where: { studentId },
+    include: {
+      groupe: {
+        include: { filiere: true },
+      },
+    },
+  });
+
+  if (!enrollments.length) {
+    return NextResponse.json([]);
+  }
+
+  const groupeIds = enrollments.map((e) => e.groupeId);
+  const filiereId = enrollments[0].groupe.filiereId;
+
+  const attendances = await prisma.attendance.findMany({
+    where: {
+      studentId,
+      seance: {
+        groupeId: { in: groupeIds },
+        filiereId,
+      },
+    },
     include: {
       seance: {
         include: {
@@ -32,18 +55,11 @@ export async function GET(request: NextRequest) {
     orderBy: { createdAt: 'desc' },
   });
 
-  // Récupérer les groupes de l'étudiant
-  const enrollments = await prisma.enrollment.findMany({
-    where: { studentId },
-    select: { groupeId: true },
-  });
-
-  const groupeIds = enrollments.map(e => e.groupeId);
-
   // Récupérer les séances clôturées des groupes de l'étudiant
   const closedSeances = await prisma.seance.findMany({
     where: {
       groupeId: { in: groupeIds },
+      filiereId,
       status: 'CLOSED',
     },
     include: {

@@ -55,14 +55,14 @@ export default function StudentPage() {
   const [tokenInput, setTokenInput] = useState('');
   const [message, setMessage] = useState<{ type: string; text: string } | null>(null);
   const [deviceId, setDeviceId] = useState<string>('');
-  const [isClient, setIsClient] = useState(false);
+  const [_isClient, _setIsClient] = useState(false);
   const QrScanner = dynamic(() => import('@yudiel/react-qr-scanner').then((m) => m.QrScanner), {
     ssr: false,
   });
   const [showCamera, setShowCamera] = useState(false);
 
   useEffect(() => {
-    setIsClient(true);
+    _setIsClient(true);
     try {
       const id = getOrCreateDeviceId();
       setDeviceId(id);
@@ -337,6 +337,8 @@ export default function StudentPage() {
                       const isPresent = presentSeanceIds.includes(seance.id);
                       const isAbsent = absentSeanceIds.includes(seance.id);
                       const isOpen = seance.status === 'OPEN';
+                      const isClosed = seance.status === 'CLOSED';
+                      const isPlanned = seance.status === 'PLANNED';
                       
                       return (
                         <div
@@ -362,10 +364,12 @@ export default function StudentPage() {
                                 className={`text-xs font-semibold px-3 py-1 rounded ${
                                   isOpen
                                     ? 'bg-green-100 text-green-700'
-                                    : 'bg-gray-100 text-gray-700'
+                                    : isClosed
+                                    ? 'bg-gray-100 text-gray-700'
+                                    : 'bg-yellow-100 text-yellow-800'
                                 }`}
                               >
-                                {isOpen ? '🟢 EN COURS' : '⚫ FERMÉE'}
+                                {isOpen ? '🟢 EN COURS' : isClosed ? '⚫ FERMÉE' : '📋 PLANIFIÉE'}
                               </span>
                               {isPresent && (
                                 <span className="text-xs font-semibold px-3 py-1 rounded bg-green-200 text-green-900">
@@ -392,7 +396,7 @@ export default function StudentPage() {
                             </button>
                           )}
 
-                          {!isOpen && !isPresent && (
+                          {isClosed && isAbsent && (
                             <button
                               onClick={() => {
                                 setSelectedSeanceForJustif(seance);
@@ -421,77 +425,93 @@ export default function StudentPage() {
               <p className="text-gray-600">Aucune présence enregistrée</p>
             ) : (
               <div className="space-y-8">
-                {/* Section Présents */}
-                {attendance.filter((att) => att.status === 'PRESENT').length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-4">
-                      <h3 className="text-lg font-bold text-green-700">
-                        ✅ Présent(s)
-                      </h3>
-                      <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-bold">
-                        {attendance.filter((att) => att.status === 'PRESENT').length}
-                      </span>
-                    </div>
-                    <div className="space-y-2 border-l-4 border-green-400 pl-4">
-                      {attendance
-                        .filter((att) => att.status === 'PRESENT')
-                        .map((att) => (
-                          <div key={att.id} className="card bg-green-50">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <h4 className="font-bold text-green-900">{att.seance.module.name}</h4>
-                                <p className="text-sm text-green-700">
-                                  {att.seance.groupe.name}
-                                </p>
-                                <p className="text-xs text-green-600">
-                                  {new Date(att.createdAt).toLocaleString('fr-FR')}
-                                </p>
-                              </div>
-                              <span className="px-3 py-1 rounded font-bold bg-green-200 text-green-900">
-                                Présent
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                )}
+                {/* Regrouper par module */}
+                {(() => {
+                  const byModule = new Map<string, any>();
+                  
+                  attendance.forEach((att) => {
+                    const moduleId = att.seance.module.id;
+                    if (!byModule.has(moduleId)) {
+                      byModule.set(moduleId, {
+                        module: att.seance.module,
+                        attendances: [],
+                      });
+                    }
+                    byModule.get(moduleId)!.attendances.push(att);
+                  });
 
-                {/* Section Absents */}
-                {attendance.filter((att) => att.status === 'ABSENT').length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-4">
-                      <h3 className="text-lg font-bold text-red-700">
-                        ❌ Absent(s)
-                      </h3>
-                      <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm font-bold">
-                        {attendance.filter((att) => att.status === 'ABSENT').length}
-                      </span>
-                    </div>
-                    <div className="space-y-2 border-l-4 border-red-400 pl-4">
-                      {attendance
-                        .filter((att) => att.status === 'ABSENT')
-                        .map((att) => (
-                          <div key={att.id} className="card bg-red-50">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <h4 className="font-bold text-red-900">{att.seance.module.name}</h4>
-                                <p className="text-sm text-red-700">
-                                  {att.seance.groupe.name}
-                                </p>
-                                <p className="text-xs text-red-600">
-                                  {new Date(att.createdAt).toLocaleString('fr-FR')}
-                                </p>
-                              </div>
-                              <span className="px-3 py-1 rounded font-bold bg-red-200 text-red-900">
-                                Absent
-                              </span>
+                  return Array.from(byModule.values()).map((moduleData) => {
+                    const presentCount = moduleData.attendances.filter((a: any) => a.status === 'PRESENT').length;
+                    const absentCount = moduleData.attendances.filter((a: any) => a.status === 'ABSENT').length;
+
+                    return (
+                      <div key={moduleData.module.id} className="card bg-gray-50">
+                        <h3 className="font-bold text-lg mb-2">{moduleData.module.name}</h3>
+                        <p className="text-sm text-gray-600 mb-4">Code: {moduleData.module.code}</p>
+                        <div className="flex gap-4 mb-4">
+                          <span className="px-3 py-1 bg-green-100 text-green-800 rounded font-semibold text-sm">
+                            ✅ {presentCount} présent(s)
+                          </span>
+                          <span className="px-3 py-1 bg-red-100 text-red-800 rounded font-semibold text-sm">
+                            ❌ {absentCount} absent(s)
+                          </span>
+                        </div>
+
+                        {/* Section Présents */}
+                        {presentCount > 0 && (
+                          <div className="mb-4">
+                            <h4 className="text-sm font-bold text-green-700 mb-2">✅ Présences</h4>
+                            <div className="space-y-2 pl-3 border-l-2 border-green-400">
+                              {moduleData.attendances
+                                .filter((att: any) => att.status === 'PRESENT')
+                                .map((att: any) => (
+                                  <div key={att.id} className="bg-green-50 p-3 rounded border border-green-200">
+                                    <div className="flex justify-between items-center">
+                                      <div>
+                                        <p className="text-sm font-semibold text-green-900">
+                                          {new Date(att.seance.date).toLocaleDateString('fr-FR')} - {att.seance.startTime}
+                                        </p>
+                                        <p className="text-xs text-green-700">{att.seance.groupe.name}</p>
+                                      </div>
+                                      <span className="text-xs px-2 py-1 bg-green-200 text-green-900 rounded font-bold">
+                                        Présent
+                                      </span>
+                                    </div>
+                                  </div>
+                                ))}
                             </div>
                           </div>
-                        ))}
-                    </div>
-                  </div>
-                )}
+                        )}
+
+                        {/* Section Absents */}
+                        {absentCount > 0 && (
+                          <div>
+                            <h4 className="text-sm font-bold text-red-700 mb-2">❌ Absences</h4>
+                            <div className="space-y-2 pl-3 border-l-2 border-red-400">
+                              {moduleData.attendances
+                                .filter((att: any) => att.status === 'ABSENT')
+                                .map((att: any) => (
+                                  <div key={att.id} className="bg-red-50 p-3 rounded border border-red-200">
+                                    <div className="flex justify-between items-center">
+                                      <div>
+                                        <p className="text-sm font-semibold text-red-900">
+                                          {new Date(att.seance.date).toLocaleDateString('fr-FR')} - {att.seance.startTime}
+                                        </p>
+                                        <p className="text-xs text-red-700">{att.seance.groupe.name}</p>
+                                      </div>
+                                      <span className="text-xs px-2 py-1 bg-red-200 text-red-900 rounded font-bold">
+                                        Absent
+                                      </span>
+                                    </div>
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  });
+                })()}
               </div>
             )}
           </div>
@@ -692,7 +712,6 @@ export default function StudentPage() {
                       }}
                       constraints={{ facingMode: 'environment' }}
                       scanDelay={800}
-                      style={{ width: '100%' }}
                     />
                   </div>
                   <button

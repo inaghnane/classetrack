@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { generateQRSecret } from '@/lib/qr-generator';
 
-async function requireProf(request: NextRequest) {
+async function requireProf(_request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session || (session.user as any)?.role !== 'PROF') {
     return null;

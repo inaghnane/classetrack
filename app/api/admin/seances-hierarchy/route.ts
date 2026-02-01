@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/db';
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session || (session.user as any)?.role !== 'ADMIN') {
@@ -27,89 +27,129 @@ export async function GET(req: NextRequest) {
     const professors = await prisma.user.findMany({
       where: { role: 'PROF' },
       include: {
-        professorTeachings: {
+        professorAssignments: {
           include: {
-            module: {
-              include: {
-                filiere: true,
-                seance: {
-                  include: {
-                    groupe: true,
-                    attendances: true,
-                  },
-                  orderBy: { date: 'desc' },
-                },
-              },
-            },
+            module: { include: { filiere: true } },
+            groupe: true,
           },
         },
       },
     });
 
-    // Organiser les données de manière hiérarchique
-    const hierarchy = professors.map((prof) => {
-      // Grouper les modules par filière
-      const modulesByFiliere = new Map<string, any>();
+    const hierarchy = await Promise.all(
+      professors.map(async (prof) => {
+        const modulesByFiliere = new Map<string, any>();
+        const assignments = prof.professorAssignments || [];
+        const seances = await prisma.seance.findMany({
+          where: { profId: prof.id },
+          include: {
+            module: { include: { filiere: true } },
+            groupe: true,
+            attendances: true,
+          },
+          orderBy: { date: 'desc' },
+        });
 
-      prof.professorTeachings.forEach((teaching) => {
-        const filiere = teaching.module.filiere;
-        if (!modulesByFiliere.has(filiere.id)) {
-          modulesByFiliere.set(filiere.id, {
-            filiere: {
-              id: filiere.id,
-              name: filiere.name,
-              code: filiere.code,
-            },
-            modules: [],
-          });
-        }
+        assignments.forEach((assignment: any) => {
+          const filiere = assignment.module.filiere;
+          if (!modulesByFiliere.has(filiere.id)) {
+            modulesByFiliere.set(filiere.id, {
+              filiere: {
+                id: filiere.id,
+                name: filiere.name,
+                code: filiere.code,
+              },
+              modules: [],
+            });
+          }
 
-        const moduleEntry = modulesByFiliere.get(filiere.id);
-        
-        // Grouper les séances par groupe
-        const seancesByGroupe = new Map<string, any>();
-        teaching.module.seance.forEach((seance) => {
-          if (!seancesByGroupe.has(seance.groupe.id)) {
-            seancesByGroupe.set(seance.groupe.id, {
+          const moduleEntry = modulesByFiliere.get(filiere.id);
+          let moduleBlock = moduleEntry.modules.find((m: any) => m.id === assignment.module.id);
+          if (!moduleBlock) {
+            moduleBlock = {
+              id: assignment.module.id,
+              name: assignment.module.name,
+              code: assignment.module.code,
+              groupes: [],
+            };
+            moduleEntry.modules.push(moduleBlock);
+          }
+
+          let groupeBlock = moduleBlock.groupes.find((g: any) => g.groupe.id === assignment.groupe.id);
+          if (!groupeBlock) {
+            groupeBlock = {
+              groupe: {
+                id: assignment.groupe.id,
+                name: assignment.groupe.name,
+              },
+              seances: [],
+            };
+            moduleBlock.groupes.push(groupeBlock);
+          }
+        });
+
+        seances.forEach((seance) => {
+          const filiere = seance.module.filiere;
+          if (!modulesByFiliere.has(filiere.id)) {
+            modulesByFiliere.set(filiere.id, {
+              filiere: {
+                id: filiere.id,
+                name: filiere.name,
+                code: filiere.code,
+              },
+              modules: [],
+            });
+          }
+
+          const moduleEntry = modulesByFiliere.get(filiere.id);
+          let moduleBlock = moduleEntry.modules.find((m: any) => m.id === seance.module.id);
+          if (!moduleBlock) {
+            moduleBlock = {
+              id: seance.module.id,
+              name: seance.module.name,
+              code: seance.module.code,
+              groupes: [],
+            };
+            moduleEntry.modules.push(moduleBlock);
+          }
+
+          let groupeBlock = moduleBlock.groupes.find((g: any) => g.groupe.id === seance.groupe.id);
+          if (!groupeBlock) {
+            groupeBlock = {
               groupe: {
                 id: seance.groupe.id,
                 name: seance.groupe.name,
               },
               seances: [],
-            });
+            };
+            moduleBlock.groupes.push(groupeBlock);
           }
 
-          seancesByGroupe.get(seance.groupe.id).seances.push({
+          groupeBlock.seances.push({
             id: seance.id,
             date: seance.date.toISOString().split('T')[0],
             startTime: seance.startTime,
             endTime: seance.endTime,
             status: seance.status,
+            confirmed: seance.confirmed,
             present: seance.attendances.filter((a) => a.status === 'PRESENT').length,
             absent: seance.attendances.filter((a) => a.status === 'ABSENT').length,
             total: enrollmentsByGroupe.get(seance.groupe.id) || 0,
           });
         });
 
-        moduleEntry.modules.push({
-          id: teaching.module.id,
-          name: teaching.module.name,
-          code: teaching.module.code,
-          groupes: Array.from(seancesByGroupe.values()),
-        });
-      });
-
-      return {
-        professor: {
-          id: prof.id,
-          name: prof.name,
-          firstName: prof.firstName,
-          lastName: prof.lastName,
-          email: prof.email,
-        },
-        filieres: Array.from(modulesByFiliere.values()),
-      };
-    });
+        return {
+          professor: {
+            id: prof.id,
+            name: prof.name,
+            firstName: prof.firstName,
+            lastName: prof.lastName,
+            email: prof.email,
+          },
+          filieres: Array.from(modulesByFiliere.values()),
+        };
+      })
+    );
 
     return NextResponse.json(hierarchy);
   } catch (error) {

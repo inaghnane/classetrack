@@ -15,6 +15,12 @@ interface Seance {
   status: string;
   qrSecret?: string;
   qrFrozen: boolean;
+  confirmed: boolean;
+  stats?: {
+    total: number;
+    present: number;
+    absent: number;
+  };
 }
 
 interface Groupe {
@@ -51,6 +57,9 @@ export default function ProfPage() {
   // Display states
   const [qrToken, setQrToken] = useState('');
   const [attendance, setAttendance] = useState<any>(null);
+  const [manualStudentIds, setManualStudentIds] = useState<string[]>([]);
+  const [manualMarkMessage, setManualMarkMessage] = useState<string | null>(null);
+  const [isMarkingPresent, setIsMarkingPresent] = useState(false);
   const [qrFrozen, setQrFrozen] = useState(false);
   const [showCreateSeance, setShowCreateSeance] = useState(false);
   const [selectedFiliereForCreate, setSelectedFiliereForCreate] = useState<string>('');
@@ -63,6 +72,11 @@ export default function ProfPage() {
   });
   const [isCreatingSeance, setIsCreatingSeance] = useState(false);
   const [message, setMessage] = useState<{ type: string; text: string } | null>(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [closedSeanceId, setClosedSeanceId] = useState<string | null>(null);
+  const [showAbsenceStats, setShowAbsenceStats] = useState(false);
+  const [absenceStats, setAbsenceStats] = useState<any>(null);
+  const [loadingStats, setLoadingStats] = useState(false);
 
   if (status === 'loading') {
     return <div className="flex items-center justify-center min-h-screen">Chargement...</div>;
@@ -74,9 +88,18 @@ export default function ProfPage() {
   }
 
   const fetchHierarchy = async () => {
-    const res = await fetch('/api/prof/hierarchy');
-    const data = await res.json();
-    setFilieres(data);
+    try {
+      const res = await fetch('/api/prof/hierarchy');
+      if (!res.ok) {
+        console.error('Hierarchy fetch failed:', res.status, await res.text());
+        return;
+      }
+      const data = await res.json();
+      console.log('Hierarchy data loaded:', data);
+      setFilieres(data);
+    } catch (error) {
+      console.error('Error fetching hierarchy:', error);
+    }
   };
 
   const handleOpenSeance = async (seanceId: string) => {
@@ -96,9 +119,62 @@ export default function ProfPage() {
   };
 
   const handleCloseSeance = async (seanceId: string) => {
-    await fetch(`/api/prof/seances/${seanceId}/close`, { method: 'POST' });
-    if (selectedSeance) {
-      setSelectedSeance({ ...selectedSeance, status: 'CLOSED' });
+    const res = await fetch(`/api/prof/seances/${seanceId}/close`, { method: 'POST' });
+    if (res.ok) {
+      if (selectedSeance) {
+        setSelectedSeance({ ...selectedSeance, status: 'CLOSED' });
+        setClosedSeanceId(seanceId);
+        setShowConfirmModal(true);
+      }
+    } else {
+      const data = await res.json().catch(() => null);
+      setMessage({
+        type: 'error',
+        text: data?.error || 'Erreur lors de la clôture',
+      });
+    }
+  };
+
+  const handleConfirmSeance = async (confirmed: boolean) => {
+    if (!closedSeanceId) return;
+    try {
+      const res = await fetch(`/api/prof/seances/${closedSeanceId}/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmed }),
+      });
+
+      if (res.ok) {
+        if (selectedSeance) {
+          setSelectedSeance({ ...selectedSeance, confirmed });
+        }
+        setMessage({
+          type: 'success',
+          text: confirmed
+            ? '✅ Séance confirmée - elle sera prise en compte'
+            : '⚠️ Séance non confirmée',
+        });
+        setShowConfirmModal(false);
+        setClosedSeanceId(null);
+      } else {
+        const raw = await res.text().catch(() => '');
+        let data: any = null;
+        try {
+          data = raw ? JSON.parse(raw) : null;
+        } catch {
+          data = null;
+        }
+        setMessage({
+          type: 'error',
+          text: data?.error || raw || 'Erreur lors de la confirmation',
+        });
+      }
+    } catch (error) {
+      console.error('Error confirming seance:', error);
+      setMessage({
+        type: 'error',
+        text: 'Erreur de connexion',
+      });
     }
   };
 
@@ -106,6 +182,32 @@ export default function ProfPage() {
     const res = await fetch(`/api/prof/seances/${seanceId}/attendance`);
     const data = await res.json();
     setAttendance(data);
+  };
+
+  const handleMarkPresentManual = async () => {
+    if (!selectedSeance || manualStudentIds.length === 0) return;
+    setIsMarkingPresent(true);
+    setManualMarkMessage(null);
+    try {
+      const res = await fetch(`/api/prof/seances/${selectedSeance.id}/mark-present`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentIds: manualStudentIds }),
+      });
+
+      if (res.ok) {
+        setManualMarkMessage('✅ Présence marquée');
+        setManualStudentIds([]);
+        await handleViewAttendance(selectedSeance.id);
+      } else {
+        const error = await res.json();
+        setManualMarkMessage(error.error || 'Erreur lors du marquage');
+      }
+    } catch (error) {
+      setManualMarkMessage('Erreur de connexion');
+    } finally {
+      setIsMarkingPresent(false);
+    }
   };
 
   const handleFreezeQR = async (seanceId: string, freeze: boolean) => {
@@ -123,7 +225,7 @@ export default function ProfPage() {
     }
   };
 
-  const handleDownloadPDF = async (seanceId: string, moduleName: string) => {
+  const handleDownloadPDF = async (seanceId: string) => {
     try {
       window.open(`/api/prof/seances/${seanceId}/export-pdf`, '_blank');
     } catch (error) {
@@ -175,23 +277,53 @@ export default function ProfPage() {
     fetchHierarchy();
   }, []);
 
+  const handleLoadAbsenceStats = async (groupeId: string) => {
+    setLoadingStats(true);
+    try {
+      const res = await fetch(`/api/prof/groupe/${groupeId}/absence-stats`);
+      if (!res.ok) {
+        const errorData = await res.json();
+        console.error('API error:', errorData);
+        alert(`❌ Erreur: ${errorData.error || 'Erreur lors du chargement'}`);
+        setLoadingStats(false);
+        return;
+      }
+      const data = await res.json();
+      console.log('Absence stats:', data);
+      setAbsenceStats(data);
+      setShowAbsenceStats(true);
+    } catch (error) {
+      console.error('Error loading absence stats:', error);
+      alert(`❌ Erreur de connexion: ${error}`);
+    } finally {
+      setLoadingStats(false);
+    }
+  };
+
   useEffect(() => {
     if (selectedSeance?.status === 'OPEN' && selectedSeance?.qrSecret) {
       if (qrFrozen) {
-        const token = generateQRToken(selectedSeance.id, selectedSeance.qrSecret);
+        const token = generateQRToken(selectedSeance.id, selectedSeance.qrSecret!);
         setQrToken(token);
         return;
       }
 
       const updateToken = () => {
-        const token = generateQRToken(selectedSeance.id, selectedSeance.qrSecret);
+        const token = generateQRToken(selectedSeance.id, selectedSeance.qrSecret!);
         setQrToken(token);
       };
       updateToken();
       const interval = setInterval(updateToken, 3000);
       return () => clearInterval(interval);
     }
+    return undefined;
   }, [selectedSeance, qrFrozen]);
+
+  useEffect(() => {
+    if (selectedSeance?.id && selectedSeance.status === 'OPEN') {
+      handleViewAttendance(selectedSeance.id);
+    }
+  }, [selectedSeance?.id, selectedSeance?.status]);
 
   return (
     <>
@@ -292,20 +424,33 @@ export default function ProfPage() {
 
         {/* Step 1: Select Filiere */}
         {!selectedFiliere ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filieres.map((filiere) => (
-              <div
-                key={filiere.id}
-                onClick={() => setSelectedFiliere(filiere)}
-                className="card cursor-pointer hover:shadow-lg transition-shadow"
-              >
-                <h3 className="font-bold text-lg mb-2">{filiere.name}</h3>
-                <p className="text-sm text-gray-600 mb-3">Code: {filiere.code}</p>
-                <p className="text-xs text-gray-500">
-                  {filiere.modules.reduce((sum: number, m: Module) => sum + m.groupes.length, 0)} groupe(s)
+          <div>
+            {filieres.length === 0 ? (
+              <div className="card bg-yellow-50 border-l-4 border-yellow-400 p-4 text-center">
+                <p className="text-yellow-800 font-semibold">
+                  ℹ️ Vous n'avez pas de modules assignés pour le moment.
+                </p>
+                <p className="text-sm text-yellow-700 mt-2">
+                  Contactez un administrateur pour vous assigner des modules et des groupes.
                 </p>
               </div>
-            ))}
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filieres.map((filiere) => (
+                  <div
+                    key={filiere.id}
+                    onClick={() => setSelectedFiliere(filiere)}
+                    className="card cursor-pointer hover:shadow-lg transition-shadow"
+                  >
+                    <h3 className="font-bold text-lg mb-2">{filiere.name}</h3>
+                    <p className="text-sm text-gray-600 mb-3">Code: {filiere.code}</p>
+                    <p className="text-xs text-gray-500">
+                      {filiere.modules.reduce((sum: number, m: Module) => sum + m.groupes.length, 0)} groupe(s)
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ) : !selectedModule ? (
           /* Step 2: Select Module */
@@ -341,8 +486,94 @@ export default function ProfPage() {
             ))}
           </div>
         ) : !selectedSeance ? (
-          /* Step 4: Select Seance */
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          /* Step 4: Select Seance or View Stats */
+          <>
+            {/* Bouton stats d'absence */}
+            <div className="mb-6">
+              <button
+                onClick={() => handleLoadAbsenceStats(selectedGroupe.id)}
+                className="btn-secondary w-full mb-4"
+                disabled={loadingStats}
+              >
+                {loadingStats ? '⏳ Chargement...' : '📊 Voir statistiques d\'absence'}
+              </button>
+              
+              {showAbsenceStats && absenceStats && (
+                <div className="card bg-yellow-50 border-yellow-200">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-bold text-lg">📊 Statistiques d'absence - {selectedGroupe.name}</h3>
+                    <button
+                      onClick={() => setShowAbsenceStats(false)}
+                      className="text-gray-500 hover:text-gray-700"
+                    >
+                      ✖
+                    </button>
+                  </div>
+                  
+                  <div className="text-sm text-gray-600 mb-4 space-y-1">
+                    <p>
+                      Total de séances clôturées: <strong>{absenceStats.totalSeances}</strong>
+                    </p>
+                    <p>
+                      Total d'absences: <strong>{absenceStats.totalAbsences}</strong>
+                    </p>
+                    <p>
+                      Absences justifiées: <strong>{absenceStats.totalJustified}</strong>
+                      {typeof absenceStats.totalApproved === 'number' && (
+                        <span className="text-xs text-gray-500"> (approuvées: {absenceStats.totalApproved})</span>
+                      )}
+                    </p>
+                  </div>
+
+                  {absenceStats.stats.length === 0 ? (
+                    <p className="text-green-700 font-semibold">✅ Aucune absence enregistrée!</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {absenceStats.stats.map((stat: any) => (
+                        <div key={stat.absenceCount} className="bg-white p-4 rounded border border-gray-200">
+                          <h4 className="font-bold text-red-700 mb-3">
+                            ❌ {stat.absenceCount} absence(s) - {stat.students.length} étudiant(s)
+                          </h4>
+                          <div className="space-y-3">
+                            {stat.students.map((data: any) => (
+                              <div key={data.student.id} className="border-l-4 border-red-500 pl-3">
+                                <p className="font-semibold">
+                                  {data.student.firstName} {data.student.lastName}
+                                </p>
+                                <p className="text-xs text-gray-600 mb-2">{data.student.email}</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {data.absences.map((absence: any, idx: number) => (
+                                    <span
+                                      key={idx}
+                                      className={`text-xs px-2 py-1 rounded ${
+                                        absence.hasJustification
+                                          ? absence.justificationStatus === 'APPROVED'
+                                            ? 'bg-green-100 text-green-800'
+                                            : absence.justificationStatus === 'PENDING'
+                                            ? 'bg-yellow-100 text-yellow-800'
+                                            : 'bg-red-100 text-red-800'
+                                          : 'bg-gray-100 text-gray-800'
+                                      }`}
+                                    >
+                                      {new Date(absence.date).toLocaleDateString('fr-FR')}
+                                      {absence.hasJustification && ' 📄'}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Liste des séances */}
+            <h3 className="font-bold text-lg mb-4">Séances du groupe {selectedGroupe.name}</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {selectedGroupe.seances.map((seance) => (
               <div
                 key={seance.id}
@@ -355,14 +586,42 @@ export default function ProfPage() {
                 <p className="text-sm text-gray-600 mb-2">
                   Horaire: {seance.startTime} - {seance.endTime}
                 </p>
-                <div className="flex gap-2">
+                <div className="flex gap-2 mb-3">
                   <span className="text-xs font-semibold px-2 py-1 bg-blue-100 text-blue-700 rounded">
                     {seance.status}
                   </span>
+                  {seance.status === 'CLOSED' && (
+                    <span className={`text-xs font-semibold px-2 py-1 rounded ${
+                      seance.confirmed 
+                        ? 'bg-green-100 text-green-700' 
+                        : 'bg-yellow-100 text-yellow-700'
+                    }`}>
+                      {seance.confirmed ? '✅ Confirmée' : '⚠️ Non confirmée'}
+                    </span>
+                  )}
                 </div>
+                
+                {/* Stats de présence */}
+                {seance.stats && (
+                  <div className="grid grid-cols-3 gap-2 text-xs mt-3 pt-3 border-t border-gray-200">
+                    <div className="bg-blue-50 text-blue-800 p-2 rounded text-center">
+                      <div className="font-bold text-lg">{seance.stats.total}</div>
+                      <div>👥 Total</div>
+                    </div>
+                    <div className="bg-green-50 text-green-800 p-2 rounded text-center">
+                      <div className="font-bold text-lg">{seance.stats.present}</div>
+                      <div>✅ Présents</div>
+                    </div>
+                    <div className="bg-red-50 text-red-800 p-2 rounded text-center">
+                      <div className="font-bold text-lg">{seance.stats.absent}</div>
+                      <div>❌ Absents</div>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
+          </>
         ) : (
           /* Step 5: Seance Details */
           <div className="card max-w-2xl mx-auto">
@@ -403,7 +662,7 @@ export default function ProfPage() {
                     <div className="w-full text-center">
                       <p className="font-mono text-xs break-all mb-1">{qrToken}</p>
                       <p className="text-[11px] text-gray-500">
-                        {qrFrozen ? '❄️ QR gelé - ne change pas' : '↻ Change toutes les 3 secondes | Valide 5 min'}
+                        {qrFrozen ? '❄️ QR gelé - ne change pas' : '↻ Change toutes les 3 secondes'}
                       </p>
                     </div>
 
@@ -429,6 +688,53 @@ export default function ProfPage() {
             )}
 
             {selectedSeance.status === 'OPEN' && (
+              <div className="mb-6 p-4 bg-yellow-50 rounded border border-yellow-200">
+                <h4 className="font-semibold mb-2">Marquer présence manuellement</h4>
+                {attendance ? (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="md:col-span-2">
+                        <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto border rounded p-2 bg-white">
+                          {attendance.absent?.map((student: any) => (
+                            <label key={student.id} className="flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={manualStudentIds.includes(student.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setManualStudentIds([...manualStudentIds, student.id]);
+                                  } else {
+                                    setManualStudentIds(manualStudentIds.filter((id) => id !== student.id));
+                                  }
+                                }}
+                              />
+                              {student.firstName} {student.lastName} ({student.email})
+                            </label>
+                          ))}
+                        </div>
+                        {attendance.absent?.length === 0 && (
+                          <p className="text-sm text-gray-600 mt-2">Tous les étudiants sont déjà présents.</p>
+                        )}
+                      </div>
+                      <button
+                        onClick={handleMarkPresentManual}
+                        className="btn-primary"
+                        disabled={manualStudentIds.length === 0 || isMarkingPresent || attendance.absent?.length === 0}
+                      >
+                        {isMarkingPresent ? '⏳ Marquage...' : '✅ Marquer présent'}
+                      </button>
+                    </div>
+                    {manualMarkMessage && (
+                      <p className="text-sm mt-2 font-semibold">{manualMarkMessage}</p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-sm text-gray-600">Chargement des présences...</p>
+                )}
+              </div>
+            )}
+
+            {selectedSeance.status === 'OPEN' && (
               <button
                 onClick={() => handleCloseSeance(selectedSeance.id)}
                 className="w-full btn-danger mb-4"
@@ -439,12 +745,25 @@ export default function ProfPage() {
 
             {selectedSeance.status === 'CLOSED' && (
               <div className="mb-4 p-4 bg-green-50 rounded border border-green-200">
-                <p className="text-green-700 font-semibold mb-3">✅ Séance clôturée</p>
+                <p className="text-green-700 font-semibold mb-3">
+                  ✅ Séance clôturée
+                  {selectedSeance.confirmed && <span className="ml-2 text-xs bg-green-600 text-white px-2 py-1 rounded">Confirmée</span>}
+                  {!selectedSeance.confirmed && <span className="ml-2 text-xs bg-gray-400 text-white px-2 py-1 rounded">Non confirmée</span>}
+                </p>
                 <button
-                  onClick={() => handleDownloadPDF(selectedSeance.id, selectedModule?.name || 'rapport')}
-                  className="w-full btn-primary"
+                  onClick={() => handleDownloadPDF(selectedSeance.id)}
+                  className="w-full btn-primary mb-2"
                 >
                   📄 Télécharger le rapport (PDF)
+                </button>
+                <button
+                  onClick={() => {
+                    setClosedSeanceId(selectedSeance.id);
+                    setShowConfirmModal(true);
+                  }}
+                  className="w-full btn-secondary text-sm"
+                >
+                  {selectedSeance.confirmed ? '🔄 Modifier la confirmation' : '✅ Confirmer la séance'}
                 </button>
               </div>
             )}
@@ -635,6 +954,36 @@ export default function ProfPage() {
                 className="flex-1 btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isCreatingSeance ? '⏳ Création...' : '✅ Créer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal confirmation séance */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold mb-4">⚠️ Confirmation de la séance</h3>
+            <p className="mb-6 text-gray-700">
+              La séance a été clôturée. Voulez-vous confirmer que cette séance doit être prise en compte ?
+            </p>
+            <p className="mb-6 text-sm text-gray-600">
+              <strong>Confirmer :</strong> La séance sera comptabilisée dans les statistiques et rapports.<br />
+              <strong>Ne pas confirmer :</strong> La séance restera clôturée mais ne sera pas prise en compte.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => handleConfirmSeance(false)}
+                className="flex-1 btn-secondary"
+              >
+                ❌ Ne pas confirmer
+              </button>
+              <button
+                onClick={() => handleConfirmSeance(true)}
+                className="flex-1 btn-primary"
+              >
+                ✅ Confirmer
               </button>
             </div>
           </div>

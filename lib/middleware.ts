@@ -25,7 +25,7 @@ export function addCloudflareHeaders(response: NextResponse): NextResponse {
   return response;
 }
 
-export async function requireAuth(request: NextRequest) {
+export async function requireAuth(_request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -34,7 +34,7 @@ export async function requireAuth(request: NextRequest) {
 }
 
 export async function requireRole(
-  request: NextRequest,
+  _request: NextRequest,
   allowedRoles: string[]
 ) {
   const session = await getServerSession(authOptions);
