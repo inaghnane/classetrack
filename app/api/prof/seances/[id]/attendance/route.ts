@@ -3,7 +3,7 @@ import { authOptions } from '@/lib/auth';
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 
-async function requireProf(request: NextRequest) {
+async function requireProf(_request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session || (session.user as any)?.role !== 'PROF') {
     return null;
@@ -23,19 +23,22 @@ export async function GET(
   try {
     const seance = await prisma.seance.findUnique({
       where: { id: params.id },
+      include: { filiere: true },
     });
 
     if (!seance) {
       return NextResponse.json({ error: 'Seance not found' }, { status: 404 });
     }
 
-    // Get all students in the group
-    const groupStudents = await prisma.enrollment.findMany({
-      where: { groupeId: seance.groupeId },
+    // Get all students in the same filière (not just the groupe)
+    const filiereStudents = await prisma.enrollment.findMany({
+      where: { 
+        groupe: { filiereId: seance.filiereId },
+      },
       select: { studentId: true },
     });
 
-    const studentIds = groupStudents.map((e) => e.studentId);
+    const studentIds = filiereStudents.map((e) => e.studentId);
 
     // Get attendance records
     const attendances = await prisma.attendance.findMany({

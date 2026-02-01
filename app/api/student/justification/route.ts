@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
 }
 
 // GET pour récupérer les justificatifs de l'étudiant
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session || (session.user as any)?.role !== 'STUDENT') {

@@ -82,17 +82,30 @@ async function main() {
     console.log(`  ✅ ${m.name}`);
   }
 
-  // 5️⃣ Create Professor Teachings
-  console.log("\n👨‍🏫 Creating professor teachings...");
+  // 5️⃣ Create Professor Assignments (prof → module → groupe)
+  console.log("\n👨‍🏫 Creating professor assignments...");
   const prof = createduser.find(u => u.role === "PROF");
   if (prof) {
+    for (const module of createdmodule) {
+      // Créer une assignation pour chaque groupe de la filière du module
+      const groupesForModule = createdgroupe.filter(g => g.filiereId === module.filiereId);
+      for (const groupe of groupesForModule) {
+        await prisma.professorAssignment.upsert({
+          where: { profId_moduleId_groupeId: { profId: prof.id, moduleId: module.id, groupeId: groupe.id } },
+          update: {},
+          create: { profId: prof.id, moduleId: module.id, groupeId: groupe.id },
+        });
+        console.log(`  ✅ Prof assigned to ${module.name} - ${groupe.name}`);
+      }
+    }
+
+    // Aussi créer les professorTeaching pour la compatibilité
     for (const module of createdmodule) {
       await prisma.professorTeaching.upsert({
         where: { profId_moduleId: { profId: prof.id, moduleId: module.id } },
         update: {},
         create: { profId: prof.id, moduleId: module.id },
       });
-      console.log(`  ✅ Prof teaches ${module.name}`);
     }
   }
 
@@ -108,8 +121,17 @@ async function main() {
   const createdseance = [];
   for (let i = 0; i < seanceData.length; i++) {
     const s = seanceData[i];
+    // Récupérer le module pour obtenir la filiereId
+    const module = await prisma.module.findUnique({ where: { id: s.moduleId } });
     const seance = await prisma.seance.create({
-      data: { date: s.date, startTime: s.startTime, endTime: s.endTime, moduleId: s.moduleId, groupeId: s.groupeId },
+      data: { 
+        date: s.date, 
+        startTime: s.startTime, 
+        endTime: s.endTime, 
+        moduleId: s.moduleId, 
+        groupeId: s.groupeId,
+        filiereId: module?.filiereId || '',
+      },
     });
     createdseance.push(seance);
     console.log(`  ✅ Seance ${i + 1}: ${s.startTime}-${s.endTime}`);

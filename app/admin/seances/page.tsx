@@ -11,6 +11,7 @@ interface Seance {
   startTime: string;
   endTime: string;
   status: string;
+  confirmed: boolean;
   present: number;
   absent: number;
   total: number;
@@ -256,7 +257,18 @@ export default function AdminSeancesPage() {
                                                           {seance.endTime}
                                                         </p>
                                                       </div>
-                                                      {statusBadge(seance.status)}
+                                                      <div className="flex gap-2">
+                                                        {statusBadge(seance.status)}
+                                                        {seance.status === 'CLOSED' && (
+                                                          <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                                            seance.confirmed 
+                                                              ? 'bg-green-100 text-green-700' 
+                                                              : 'bg-yellow-100 text-yellow-700'
+                                                          }`}>
+                                                            {seance.confirmed ? '✅ Confirmée' : '⚠️ Non confirmée'}
+                                                          </span>
+                                                        )}
+                                                      </div>
                                                     </div>
 
                                                     <div className="grid grid-cols-3 gap-2 text-xs">

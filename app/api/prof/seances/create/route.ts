@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/db';
 
 // GET - Récupérer les séances d'un prof
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session || (session.user as any)?.role !== 'PROF') {
@@ -14,21 +14,15 @@ export async function GET(req: NextRequest) {
     const profId = (session.user as any).id;
 
     const seances = await prisma.seance.findMany({
-      where: {
-        module: {
-          professorTeachings: {
-            some: {
-              profId,
-            },
-          },
-        },
-      },
+      where: { profId },
       include: {
         module: true,
         groupe: true,
+        professor: { select: { id: true, firstName: true, lastName: true, email: true } },
       },
       orderBy: { date: 'desc' },
     });
+
 
     return NextResponse.json(seances);
   } catch (error) {
@@ -56,17 +50,17 @@ export async function POST(req: NextRequest) {
 
     const profId = (session.user as any).id;
 
-    // Vérifier que le prof enseigne ce module
-    const teaching = await prisma.professorTeaching.findFirst({
+    const assignment = await prisma.professorAssignment.findFirst({
       where: {
         profId,
         moduleId,
+        groupeId,
       },
     });
 
-    if (!teaching) {
+    if (!assignment) {
       return NextResponse.json(
-        { error: 'Vous n\'enseignez pas ce module' },
+        { error: 'Vous n\'êtes pas assigné à ce module/groupe' },
         { status: 403 }
       );
     }
@@ -96,10 +90,13 @@ export async function POST(req: NextRequest) {
         status: 'PLANNED',
         moduleId,
         groupeId,
+        filiereId: module.filiereId,
+        profId,
       },
       include: {
         module: true,
         groupe: true,
+        professor: { select: { id: true, firstName: true, lastName: true, email: true } },
       },
     });
 

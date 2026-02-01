@@ -43,6 +43,36 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = enrollSchema.parse(body);
 
+    // Check if the group exists and get its filiere
+    const groupe = await prisma.groupe.findUnique({
+      where: { id: validated.groupeId },
+      include: { filiere: true },
+    });
+
+    if (!groupe) {
+      return NextResponse.json({ error: 'Groupe not found' }, { status: 404 });
+    }
+
+    // Check if student already has any enrollment (one student = one group = one filiere)
+    const existingEnrollments = await prisma.enrollment.findMany({
+      where: { studentId: validated.studentId },
+      include: {
+        groupe: {
+          include: { filiere: true },
+        },
+      },
+    });
+
+    if (existingEnrollments.length > 0) {
+      const existingGroupe = existingEnrollments[0].groupe;
+      return NextResponse.json(
+        {
+          error: `Étudiant déjà inscrit au groupe "${existingGroupe.name}" (filière "${existingGroupe.filiere.name}"). Un étudiant ne peut être inscrit qu'à un seul groupe.`,
+        },
+        { status: 400 }
+      );
+    }
+
     const enrollment = await prisma.enrollment.create({
       data: {
         studentId: validated.studentId,

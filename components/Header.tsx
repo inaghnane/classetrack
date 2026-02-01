@@ -1,12 +1,10 @@
 'use client';
 
 import { signOut, useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 export default function Header() {
   const { data: session } = useSession();
-  const router = useRouter();
 
   if (!session) return null;
 

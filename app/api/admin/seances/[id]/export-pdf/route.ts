@@ -5,7 +5,7 @@ import prisma from '@/lib/db';
 import PDFDocument from 'pdfkit';
 
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
@@ -23,14 +23,10 @@ export async function GET(
         module: {
           include: {
             filiere: true,
-            professorTeachings: {
-              include: {
-                professor: true,
-              },
-            },
           },
         },
         groupe: true,
+        professor: true,
         attendances: {
           include: {
             student: true,
@@ -66,9 +62,11 @@ export async function GET(
     doc.text(`Horaire: ${seance.startTime} - ${seance.endTime}`, { continued: false });
     doc.text(`Statut: ${seance.status}`, { continued: false });
     
-    if (seance.module.professorTeachings.length > 0) {
-      const prof = seance.module.professorTeachings[0].professor;
-      doc.text(`Professeur: ${prof.firstName} ${prof.lastName}`, { continued: false });
+    if (seance.professor) {
+      doc.text(
+        `Professeur: ${seance.professor.firstName} ${seance.professor.lastName}`,
+        { continued: false }
+      );
     }
     
     doc.moveDown();

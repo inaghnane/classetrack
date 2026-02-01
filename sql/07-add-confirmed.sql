@@ -1,0 +1,2 @@
+ALTER TABLE `seance`
+ADD COLUMN `confirmed` BOOLEAN NOT NULL DEFAULT false;

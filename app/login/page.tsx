@@ -11,6 +11,11 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isClient, setIsClient] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [userId, setUserId] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const router = useRouter();
 
   // S'assurer que localStorage est accessible côté client
@@ -39,6 +44,14 @@ export default function LoginPage() {
       // Récupérer les informations de l'utilisateur
       const res = await fetch('/api/me');
       const user = await res.json();
+
+      // Vérifier si l'utilisateur doit changer son mot de passe
+      if (user.mustChangePassword) {
+        setUserId(user.id);
+        setShowChangePassword(true);
+        setIsLoading(false);
+        return;
+      }
 
       // Pour les ÉTUDIANTS: vérifier la restriction d'appareil
       if (user.role === 'STUDENT' && isClient) {
@@ -71,12 +84,67 @@ export default function LoginPage() {
         ADMIN: '/admin',
         PROF: '/prof',
         STUDENT: '/student',
-      }[user.role] || '/';
+      }[(user.role as string) || 'STUDENT'] || '/';
 
       router.push(redirectPath);
     } catch (err: any) {
       setError('Erreur lors de la connexion: ' + err.message);
       setIsLoading(false);
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError('');
+
+    if (newPassword.length < 8) {
+      setPasswordError('Le mot de passe doit contenir au moins 8 caractères');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Les mots de passe ne correspondent pas');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          newPassword,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        setPasswordError(data.error || 'Erreur lors du changement de mot de passe');
+        return;
+      }
+
+      // Reconnexion automatique
+      alert('✅ Mot de passe changé avec succès! Reconnexion...');
+      const result = await signIn('credentials', {
+        email,
+        password: newPassword,
+        redirect: false,
+      });
+
+      if (result?.ok) {
+        const userRes = await fetch('/api/me');
+        const user = await userRes.json();
+        
+        const redirectPath = {
+          ADMIN: '/admin',
+          PROF: '/prof',
+          STUDENT: '/student',
+        }[(user.role as string) || 'STUDENT'] || '/';
+
+        router.push(redirectPath);
+      }
+    } catch (err: any) {
+      setPasswordError('Erreur: ' + err.message);
     }
   };
 
@@ -145,6 +213,69 @@ export default function LoginPage() {
           </ul>
         </div>
       </div>
+
+      {/* Modal changement de mot de passe obligatoire */}
+      {showChangePassword && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-8 max-w-md w-full">
+            <h2 className="text-2xl font-bold mb-4 text-red-600">
+              🔒 Changement de mot de passe requis
+            </h2>
+            <p className="text-gray-700 mb-6">
+              Pour des raisons de sécurité, vous devez changer votre mot de passe avant de continuer.
+            </p>
+
+            {passwordError && (
+              <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded text-sm">
+                {passwordError}
+              </div>
+            )}
+
+            <form onSubmit={handleChangePassword}>
+              <div className="mb-4">
+                <label className="block text-sm font-semibold mb-2">
+                  Nouveau mot de passe (min. 8 caractères)
+                </label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="input-field w-full"
+                  placeholder="••••••••"
+                  required
+                  minLength={8}
+                />
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-sm font-semibold mb-2">
+                  Confirmer le mot de passe
+                </label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="input-field w-full"
+                  placeholder="••••••••"
+                  required
+                  minLength={8}
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full btn-primary"
+              >
+                ✅ Changer le mot de passe
+              </button>
+            </form>
+
+            <p className="text-xs text-gray-500 mt-4 text-center">
+              Cette fenêtre ne peut pas être fermée. Vous devez changer votre mot de passe pour continuer.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

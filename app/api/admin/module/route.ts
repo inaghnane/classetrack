@@ -12,7 +12,7 @@ async function requireAdmin() {
   return session;
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
 const session = await requireAdmin();
   if (!session) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

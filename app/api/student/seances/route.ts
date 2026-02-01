@@ -3,7 +3,7 @@ import { authOptions } from '@/lib/auth';
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 
-async function requireStudent(request: NextRequest) {
+async function requireStudent(_request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session || (session.user as any)?.role !== 'STUDENT') {
     return null;

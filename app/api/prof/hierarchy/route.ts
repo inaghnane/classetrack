@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/db';
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session || (session.user as any)?.role !== 'PROF') {
@@ -12,28 +12,36 @@ export async function GET(req: NextRequest) {
 
     const profId = (session.user as any).id;
 
-    // Récupérer tous les modules enseignés par le professeur
-    const professorTeachings = await prisma.professorTeaching.findMany({
+    // Récupérer toutes les assignations du professeur (module + groupe)
+    const assignments = await prisma.professorAssignment.findMany({
       where: { profId },
       include: {
-        module: {
+        module: { include: { filiere: true } },
+        groupe: {
           include: {
-            filiere: true,
-            seance: {
-              include: {
-                groupe: true,
-              },
-            },
+            _count: { select: { enrollments: true } },
           },
         },
+      },
+    });
+
+    const seances = await prisma.seance.findMany({
+      where: { profId },
+      include: {
+        groupe: {
+          include: {
+            _count: { select: { enrollments: true } },
+          },
+        },
+        attendances: true,
       },
     });
 
     // Organiser les données par filière
     const filieresMap = new Map();
 
-    professorTeachings.forEach((teaching) => {
-      const module = teaching.module;
+    assignments.forEach((assignment) => {
+      const module = assignment.module;
       const filiere = module.filiere;
 
       if (!filieresMap.has(filiere.id)) {
@@ -55,19 +63,33 @@ export async function GET(req: NextRequest) {
         };
       }
 
-      // Organiser les séances par groupe
       const groupesMap = filiereData.modules[module.id].groupes;
-      module.seance.forEach((seance) => {
-        const groupeId = seance.groupe.id;
-        if (!groupesMap[groupeId]) {
-          groupesMap[groupeId] = {
-            id: seance.groupe.id,
-            name: seance.groupe.name,
-            seances: [],
-          };
-        }
-        groupesMap[groupeId].seances.push(seance);
-      });
+      if (!groupesMap[assignment.groupeId]) {
+        groupesMap[assignment.groupeId] = {
+          id: assignment.groupe.id,
+          name: assignment.groupe.name,
+          seances: [],
+        };
+      }
+
+      seances
+        .filter(
+          (s) => s.moduleId === assignment.moduleId && s.groupeId === assignment.groupeId
+        )
+        .forEach((seance) => {
+          const totalStudents = seance.groupe._count.enrollments;
+          const presentCount = seance.attendances.filter((a: any) => a.status === 'PRESENT').length;
+          const absentCount = seance.attendances.filter((a: any) => a.status === 'ABSENT').length;
+
+          groupesMap[assignment.groupeId].seances.push({
+            ...seance,
+            stats: {
+              total: totalStudents,
+              present: presentCount,
+              absent: absentCount,
+            },
+          });
+        });
     });
 
     // Convertir la Map en array

@@ -56,7 +56,7 @@ const session = await requireAdmin();
 }
 
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
 const session = await requireAdmin();

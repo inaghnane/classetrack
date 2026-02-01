@@ -16,7 +16,7 @@ function addCorsHeaders(response: NextResponse) {
   return response;
 }
 
-async function requireStudent(request: NextRequest) {
+async function requireStudent(_request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session || (session.user as any)?.role !== 'STUDENT') {
     return null;

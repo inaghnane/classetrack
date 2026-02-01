@@ -4,14 +4,19 @@ import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/db';
 
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
     const session = await getServerSession(authOptions);
-    const userRole = (session.user as any)?.role;
     
-    if (!session || (userRole !== 'PROF' && userRole !== 'ADMIN')) {
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    
+    const userRole = (session.user as any)?.role;
+
+    if (userRole !== 'PROF' && userRole !== 'ADMIN') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

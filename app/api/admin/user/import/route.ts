@@ -52,21 +52,33 @@ export async function POST(req: NextRequest) {
     let created = 0;
     let enrolled = 0;
     let skipped = 0;
+    let updated = 0;
 
     for (const row of rows) {
       const email = (getCell(row, 'email') || '').toString().trim();
       const firstName = (getCell(row, 'firstname') || getCell(row, 'prenom') || '').toString().trim();
       const lastName = (getCell(row, 'lastname') || getCell(row, 'nom') || '').toString().trim();
 
-      if (!email || !firstName || !lastName) {
+      if (!email) {
         skipped += 1;
         continue;
       }
 
-      let user = await prisma.user.findUnique({ where: { email } });
+      const users = await prisma.user.findMany({ where: { email } });
+
+      if (users.length > 1) {
+        skipped += 1;
+        continue;
+      }
+
+      let user = users[0];
 
       if (!user) {
-        const passwordHash = await bcryptjs.hash('ChangeMe123!', 10);
+        if (!firstName || !lastName) {
+          skipped += 1;
+          continue;
+        }
+        const passwordHash = await bcryptjs.hash('Student@12345', 10);
         user = await prisma.user.create({
           data: {
             email,
@@ -74,12 +86,28 @@ export async function POST(req: NextRequest) {
             lastName,
             role: 'STUDENT',
             passwordHash,
+            mustChangePassword: true,
           },
         });
         created += 1;
       } else if (user.role !== 'STUDENT') {
         skipped += 1;
         continue;
+      } else {
+        const updateData: { firstName?: string; lastName?: string } = {};
+        if (firstName && firstName !== user.firstName) {
+          updateData.firstName = firstName;
+        }
+        if (lastName && lastName !== user.lastName) {
+          updateData.lastName = lastName;
+        }
+        if (Object.keys(updateData).length > 0) {
+          user = await prisma.user.update({
+            where: { id: user.id },
+            data: updateData,
+          });
+          updated += 1;
+        }
       }
 
       const existingEnrollment = await prisma.enrollment.findUnique({
@@ -94,7 +122,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ created, enrolled, skipped });
+    return NextResponse.json({ created, enrolled, updated, skipped });
   } catch (error) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

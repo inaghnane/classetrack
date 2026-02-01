@@ -30,6 +30,7 @@ export const createModuleSchema = z.object({
 export const createSeanceSchema = z.object({
   moduleId: z.string().cuid(),
   groupeId: z.string().cuid(),
+  profId: z.string().cuid(),
   date: z.coerce.date(),
   startTime: z.string().min(1, 'Start time required'),
   endTime: z.string().min(1, 'End time required'),

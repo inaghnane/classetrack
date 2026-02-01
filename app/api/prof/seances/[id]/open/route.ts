@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { generateQRSecret } from '@/lib/qr-generator';
 
-async function requireProf(request: NextRequest) {
+async function requireProf(_request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session || (session.user as any)?.role !== 'PROF') {
     return null;
@@ -37,6 +37,32 @@ export async function POST(
       );
     }
 
+    const profId = (session.user as any).id;
+
+    if (seance.profId && seance.profId !== profId) {
+      return NextResponse.json(
+        { error: 'Seance is assigned to another professor' },
+        { status: 403 }
+      );
+    }
+
+    if (!seance.profId) {
+      const assignment = await prisma.professorAssignment.findFirst({
+        where: {
+          profId,
+          moduleId: seance.moduleId,
+          groupeId: seance.groupeId,
+        },
+      });
+
+      if (!assignment) {
+        return NextResponse.json(
+          { error: 'Vous n\'êtes pas assigné à ce module/groupe' },
+          { status: 403 }
+        );
+      }
+    }
+
     const qrSecret = seance.qrSecret ?? generateQRSecret();
 
     const updated = await prisma.seance.update({
@@ -44,6 +70,7 @@ export async function POST(
       data: {
         status: 'OPEN',
         qrSecret,
+        profId: seance.profId ?? profId,
       },
       include: {
         module: true,

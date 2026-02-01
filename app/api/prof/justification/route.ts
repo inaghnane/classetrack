@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/db';
 
 // GET - Récupérer tous les justificatifs pour le professeur
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session || (session.user as any)?.role !== 'PROF') {
@@ -13,21 +13,19 @@ export async function GET(req: NextRequest) {
 
     const profId = (session.user as any).id;
 
-    // Récupérer les modules enseignés par ce professeur
-    const professorTeachings = await prisma.professorTeaching.findMany({
+    const assignments = await prisma.professorAssignment.findMany({
       where: { profId },
-      select: { moduleId: true },
+      select: { moduleId: true, groupeId: true },
     });
 
-    const moduleIds = professorTeachings.map((pt) => pt.moduleId);
-
-    // Récupérer les justificatifs pour les séances de ces modules
+    // Récupérer les justificatifs pour les séances assignées à ce prof
     const justifications = await prisma.justification.findMany({
       where: {
         seance: {
-          moduleId: {
-            in: moduleIds,
-          },
+          OR: assignments.map((a) => ({
+            moduleId: a.moduleId,
+            groupeId: a.groupeId,
+          })),
         },
       },
       include: {
@@ -77,21 +75,11 @@ export async function PATCH(req: NextRequest) {
 
     const profId = (session.user as any).id;
 
-    // Vérifier que le justificatif existe et appartient à un module enseigné par ce prof
+    // Vérifier que le justificatif existe et appartient à un module/groupe assigné à ce prof
     const justification = await prisma.justification.findUnique({
       where: { id: justificationId },
       include: {
-        seance: {
-          include: {
-            module: {
-              include: {
-                professorTeachings: {
-                  where: { profId },
-                },
-              },
-            },
-          },
-        },
+        seance: true,
       },
     });
 
@@ -99,9 +87,17 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Justificatif non trouvé' }, { status: 404 });
     }
 
-    if (justification.seance.module.professorTeachings.length === 0) {
+    const assignment = await prisma.professorAssignment.findFirst({
+      where: {
+        profId,
+        moduleId: justification.seance.moduleId,
+        groupeId: justification.seance.groupeId,
+      },
+    });
+
+    if (!assignment) {
       return NextResponse.json(
-        { error: 'Vous n\'enseignez pas ce module' },
+        { error: 'Vous n\'êtes pas assigné à ce module/groupe' },
         { status: 403 }
       );
     }
