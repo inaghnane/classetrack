@@ -36,6 +36,14 @@ enum user_role {
   STUDENT
 }
 
+enum education_level {
+  L1
+  L2
+  L3
+  M1
+  M2
+}
+
 model filiere {
   id        String   @id @default(cuid()) @db.VarChar(25)
   name      String   @unique @db.VarChar(191)
@@ -43,41 +51,42 @@ model filiere {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  groupe  groupe[]
-  modules module[]
-  seances seance[]
+  groupe                 groupe[]
+  modules                module[]
+  seances                seance[]
 
   @@map("filiere")
 }
 
 model groupe {
-  id         String   @id @default(cuid()) @db.VarChar(25)
-  name       String   @db.VarChar(191)
-  code       String   @unique @db.VarChar(50)
-  filiereId  String   @db.VarChar(25)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id              String   @id @default(cuid()) @db.VarChar(25)
+  name            String   @db.VarChar(191)
+  code            String   @unique @db.VarChar(50)
+  filiereId       String   @db.VarChar(25)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  filiere      filiere      @relation(fields: [filiereId], references: [id], onDelete: Cascade)
-  enrollments  enrollment[]
-  seances      seance[]
-  professorAssignments professorAssignment[]
+  filiere               filiere               @relation(fields: [filiereId], references: [id], onDelete: Cascade)
+  enrollments           enrollment[]
+  seances               seance[]
+  professorAssignments  professorAssignment[]
 
+  @@unique([name, filiereId])
   @@map("groupe")
 }
 
 model module {
-  id        String   @id @default(cuid()) @db.VarChar(25)
-  name      String   @db.VarChar(191)
-  code      String   @unique @db.VarChar(50)
-  filiereId String   @db.VarChar(25)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String   @id @default(cuid()) @db.VarChar(25)
+  name            String   @db.VarChar(191)
+  code            String   @unique @db.VarChar(50)
+  filiereId       String   @db.VarChar(25)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  filiere            filiere             @relation(fields: [filiereId], references: [id], onDelete: Cascade)
-  seance             seance[]
-  professorTeachings professorTeaching[]
-  professorAssignments professorAssignment[]
+  filiere                  filiere                 @relation(fields: [filiereId], references: [id], onDelete: Cascade)
+  seance                   seance[]
+  professorTeachings       professorTeaching[]
+  professorAssignments     professorAssignment[]
 
   @@unique([name, filiereId])
   @@map("module")

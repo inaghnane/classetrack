@@ -721,7 +721,10 @@ function AdminStructure() {
     await fetch('/api/admin/module', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newModuleName, filiereId: newModuleFiliere }),
+      body: JSON.stringify({ 
+        name: newModuleName, 
+        filiereId: newModuleFiliere,
+      }),
     });
     setNewModuleName('');
     setNewModuleFiliere('');
@@ -740,7 +743,10 @@ function AdminStructure() {
     await fetch(`/api/admin/module/${editingModule.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: editModuleName, filiereId: editModuleFiliere }),
+      body: JSON.stringify({ 
+        name: editModuleName, 
+        filiereId: editModuleFiliere,
+      }),
     });
     setEditingModule(null);
     fetchAll();
@@ -759,7 +765,10 @@ function AdminStructure() {
     await fetch('/api/admin/groupe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newGroupeName, filiereId: newGroupeFiliere }),
+      body: JSON.stringify({ 
+        name: newGroupeName, 
+        filiereId: newGroupeFiliere,
+      }),
     });
     setNewGroupeName('');
     setNewGroupeFiliere('');
@@ -778,7 +787,10 @@ function AdminStructure() {
     await fetch(`/api/admin/groupe/${editingGroupe.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: editGroupeName, filiereId: editGroupeFiliere }),
+      body: JSON.stringify({ 
+        name: editGroupeName, 
+        filiereId: editGroupeFiliere,
+      }),
     });
     setEditingGroupe(null);
     fetchAll();
