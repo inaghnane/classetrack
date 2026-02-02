@@ -338,7 +338,6 @@ export default function StudentPage() {
                       const isAbsent = absentSeanceIds.includes(seance.id);
                       const isOpen = seance.status === 'OPEN';
                       const isClosed = seance.status === 'CLOSED';
-                      const isPlanned = seance.status === 'PLANNED';
                       
                       return (
                         <div
