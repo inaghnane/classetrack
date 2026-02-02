@@ -25,28 +25,35 @@ export default function AdminPage() {
       <main className="container">
         <h1 className="text-3xl font-bold mb-6">Panneau Admin</h1>
 
-        <div className="flex gap-4 mb-6 border-b">
-          {['user', 'professor', 'filiere', 'module', 'groupe', 'enrollment', 'seance'].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 font-semibold ${
-                activeTab === tab
-                  ? 'border-b-2 border-blue-600 text-blue-600'
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
-            >
-              {tab === 'professor' ? 'Professeurs' : tab.charAt(0).toUpperCase() + tab.slice(1)}
-            </button>
-          ))}
+        <div className="flex gap-4 mb-6 border-b flex-wrap">
+          {['user', 'structure', 'professor', 'enrollment', 'seance'].map((tab) => {
+            const labels: any = {
+              'user': 'Utilisateurs',
+              'structure': 'Filière / Module / Groupe',
+              'professor': 'Professeurs',
+              'enrollment': 'Étudiants',
+              'seance': 'Séances',
+            };
+            return (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-4 py-2 font-semibold whitespace-nowrap ${
+                  activeTab === tab
+                    ? 'border-b-2 border-blue-600 text-blue-600'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                {labels[tab]}
+              </button>
+            );
+          })}
         </div>
 
         <div className="card">
           {activeTab === 'user' && <Adminuser />}
+          {activeTab === 'structure' && <AdminStructure />}
           {activeTab === 'professor' && <AdminProfessor />}
-          {activeTab === 'filiere' && <Adminfiliere />}
-          {activeTab === 'module' && <Adminmodule />}
-          {activeTab === 'groupe' && <Admingroupe />}
           {activeTab === 'enrollment' && <Adminenrollment />}
           {activeTab === 'seance' && <Adminseance />}
         </div>
@@ -293,7 +300,8 @@ function AdminProfessor() {
     setLoading(true);
     const res = await fetch('/api/admin/user');
     const data = await res.json();
-    setProfessors(data.filter((u: any) => u.role === 'PROF'));
+    const allUsers = data.filter((u: any) => u.role === 'PROF');
+    setProfessors(allUsers);
     setLoading(false);
   };
 
@@ -352,6 +360,8 @@ function AdminProfessor() {
       alert('❌ Erreur');
     }
   };
+
+
 
   const openAssignModal = (prof: any) => {
     setSelectedProf(prof);
@@ -630,199 +640,343 @@ function AdminProfessor() {
   );
 }
 
-function Adminfiliere() {
-  const [filiere, setfiliere] = useState<any[]>([]);
-  const [newName, setNewName] = useState('');
+function AdminStructure() {
+  const [filieres, setFilieres] = useState<any[]>([]);
+  const [modules, setModules] = useState<any[]>([]);
+  const [groupes, setGroupes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  
+  // Filière form
+  const [newFiliereName, setNewFiliereName] = useState('');
+  const [editingFiliere, setEditingFiliere] = useState<any | null>(null);
+  const [editFiliereName, setEditFiliereName] = useState('');
+  
+  // Module form
+  const [newModuleName, setNewModuleName] = useState('');
+  const [newModuleFiliere, setNewModuleFiliere] = useState('');
+  const [editingModule, setEditingModule] = useState<any | null>(null);
+  const [editModuleName, setEditModuleName] = useState('');
+  const [editModuleFiliere, setEditModuleFiliere] = useState('');
+  
+  // Groupe form
+  const [newGroupeName, setNewGroupeName] = useState('');
+  const [newGroupeFiliere, setNewGroupeFiliere] = useState('');
+  const [editingGroupe, setEditingGroupe] = useState<any | null>(null);
+  const [editGroupeName, setEditGroupeName] = useState('');
+  const [editGroupeFiliere, setEditGroupeFiliere] = useState('');
 
-  const fetchfiliere = async () => {
-    const res = await fetch('/api/admin/filiere');
-    const data = await res.json();
-    setfiliere(data);
+  const fetchAll = async () => {
+    setLoading(true);
+    const [fRes, mRes, gRes] = await Promise.all([
+      fetch('/api/admin/filiere'),
+      fetch('/api/admin/module'),
+      fetch('/api/admin/groupe'),
+    ]);
+    setFilieres(await fRes.json());
+    setModules(await mRes.json());
+    setGroupes(await gRes.json());
+    setLoading(false);
   };
 
-  const handleAdd = async (e: React.FormEvent) => {
+  // FILIÈRE handlers
+  const handleAddFiliere = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newFiliereName) return;
     await fetch('/api/admin/filiere', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newName }),
+      body: JSON.stringify({ name: newFiliereName }),
     });
-    setNewName('');
-    fetchfiliere();
+    setNewFiliereName('');
+    fetchAll();
   };
 
-  return (
-    <div>
-      <button onClick={fetchfiliere} className="btn-primary mb-4">
-        Charger les filière
-      </button>
-      <form onSubmit={handleAdd} className="mb-4 flex gap-2">
-        <input
-          type="text"
-          placeholder="Nom filière"
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          className="input-field flex-1"
-        />
-        <button type="submit" className="btn-primary">
-          Ajouter
-        </button>
-      </form>
-      <ul>
-        {filiere.map((f) => (
-          <li key={f.id} className="p-2 border-b">
-            {f.name}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function Admingroupe() {
-  const [groupe, setgroupe] = useState<any[]>([]);
-  const [filiere, setfiliere] = useState<any[]>([]);
-  const [newGroupe, setNewGroupe] = useState({ name: '', filiereId: '' });
-
-  const fetchgroupe = async () => {
-    const res = await fetch('/api/admin/groupe');
-    const data = await res.json();
-    setgroupe(data);
+  const handleEditFiliere = (f: any) => {
+    setEditingFiliere(f);
+    setEditFiliereName(f.name);
   };
 
-  const fetchfiliere = async () => {
-    const res = await fetch('/api/admin/filiere');
-    const data = await res.json();
-    setfiliere(data);
-  };
-
-  const handleAdd = async (e: React.FormEvent) => {
+  const handleUpdateFiliere = async (e: React.FormEvent) => {
     e.preventDefault();
-    await fetch('/api/admin/groupe', {
-      method: 'POST',
+    if (!editingFiliere) return;
+    await fetch(`/api/admin/filiere/${editingFiliere.id}`, {
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newGroupe),
+      body: JSON.stringify({ name: editFiliereName }),
     });
-    setNewGroupe({ name: '', filiereId: '' });
-    fetchgroupe();
+    setEditingFiliere(null);
+    fetchAll();
   };
 
-  return (
-    <div>
-      <button
-        onClick={() => {
-          fetchgroupe();
-          fetchfiliere();
-        }}
-        className="btn-primary mb-4"
-      >
-        Charger les groupe
-      </button>
-      <form onSubmit={handleAdd} className="mb-4 flex gap-2">
-        <input
-          type="text"
-          placeholder="Nom groupe"
-          value={newGroupe.name}
-          onChange={(e) => setNewGroupe({ ...newGroupe, name: e.target.value })}
-          className="input-field flex-1"
-        />
-        <select
-          value={newGroupe.filiereId}
-          onChange={(e) => setNewGroupe({ ...newGroupe, filiereId: e.target.value })}
-          className="input-field flex-1"
-        >
-          <option value="">Sélectionner filière</option>
-          {filiere.map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.name}
-            </option>
-          ))}
-        </select>
-        <button type="submit" className="btn-primary">
-          Ajouter
-        </button>
-      </form>
-      <ul>
-        {groupe.map((g) => (
-          <li key={g.id} className="p-2 border-b">
-            {g.name} ({g.filiere.name})
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function Adminmodule() {
-  const [module, setmodule] = useState<any[]>([]);
-  const [filiere, setfiliere] = useState<any[]>([]);
-  const [newModule, setNewModule] = useState({ name: '', filiereId: '' });
-
-  const fetchmodule = async () => {
-    const res = await fetch('/api/admin/module');
-    const data = await res.json();
-    setmodule(data);
+  const handleDeleteFiliere = async (id: string) => {
+    if (!confirm('Supprimer cette filière?')) return;
+    await fetch(`/api/admin/filiere/${id}`, { method: 'DELETE' });
+    fetchAll();
   };
 
-  const fetchfiliere = async () => {
-    const res = await fetch('/api/admin/filiere');
-    const data = await res.json();
-    setfiliere(data);
-  };
-
-  const handleAdd = async (e: React.FormEvent) => {
+  // MODULE handlers
+  const handleAddModule = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newModuleName || !newModuleFiliere) return;
     await fetch('/api/admin/module', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newModule),
+      body: JSON.stringify({ name: newModuleName, filiereId: newModuleFiliere }),
     });
-    setNewModule({ name: '', filiereId: '' });
-    fetchmodule();
+    setNewModuleName('');
+    setNewModuleFiliere('');
+    fetchAll();
+  };
+
+  const handleEditModule = (m: any) => {
+    setEditingModule(m);
+    setEditModuleName(m.name);
+    setEditModuleFiliere(m.filiereId);
+  };
+
+  const handleUpdateModule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingModule) return;
+    await fetch(`/api/admin/module/${editingModule.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: editModuleName, filiereId: editModuleFiliere }),
+    });
+    setEditingModule(null);
+    fetchAll();
+  };
+
+  const handleDeleteModule = async (id: string) => {
+    if (!confirm('Supprimer ce module?')) return;
+    await fetch(`/api/admin/module/${id}`, { method: 'DELETE' });
+    fetchAll();
+  };
+
+  // GROUPE handlers
+  const handleAddGroupe = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newGroupeName || !newGroupeFiliere) return;
+    await fetch('/api/admin/groupe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newGroupeName, filiereId: newGroupeFiliere }),
+    });
+    setNewGroupeName('');
+    setNewGroupeFiliere('');
+    fetchAll();
+  };
+
+  const handleEditGroupe = (g: any) => {
+    setEditingGroupe(g);
+    setEditGroupeName(g.name);
+    setEditGroupeFiliere(g.filiereId);
+  };
+
+  const handleUpdateGroupe = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingGroupe) return;
+    await fetch(`/api/admin/groupe/${editingGroupe.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: editGroupeName, filiereId: editGroupeFiliere }),
+    });
+    setEditingGroupe(null);
+    fetchAll();
+  };
+
+  const handleDeleteGroupe = async (id: string) => {
+    if (!confirm('Supprimer ce groupe?')) return;
+    await fetch(`/api/admin/groupe/${id}`, { method: 'DELETE' });
+    fetchAll();
   };
 
   return (
     <div>
-      <button
-        onClick={() => {
-          fetchmodule();
-          fetchfiliere();
-        }}
-        className="btn-primary mb-4"
-      >
-        Charger les module
+      <button onClick={fetchAll} disabled={loading} className="btn-primary mb-6">
+        {loading ? 'Chargement...' : '🔄 Charger'}
       </button>
-      <form onSubmit={handleAdd} className="mb-4 flex gap-2">
-        <input
-          type="text"
-          placeholder="Nom module"
-          value={newModule.name}
-          onChange={(e) => setNewModule({ ...newModule, name: e.target.value })}
-          className="input-field flex-1"
-        />
-        <select
-          value={newModule.filiereId}
-          onChange={(e) => setNewModule({ ...newModule, filiereId: e.target.value })}
-          className="input-field flex-1"
-        >
-          <option value="">Sélectionner filière</option>
-          {filiere.map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.name}
-            </option>
-          ))}
-        </select>
-        <button type="submit" className="btn-primary">
-          Ajouter
-        </button>
-      </form>
-      <ul>
-        {module.map((m) => (
-          <li key={m.id} className="p-2 border-b">
-            {m.name} ({m.filiere.name})
-          </li>
-        ))}
-      </ul>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* FILIÈRES */}
+        <div>
+          <h3 className="text-xl font-bold mb-4">📚 Filières</h3>
+          
+          <form onSubmit={handleAddFiliere} className="mb-4 p-3 bg-gray-50 rounded border">
+            <input
+              type="text"
+              placeholder="Nom de la filière"
+              value={newFiliereName}
+              onChange={(e) => setNewFiliereName(e.target.value)}
+              className="input-field mb-2 w-full"
+              required
+            />
+            <button type="submit" className="btn-primary w-full text-sm">Ajouter</button>
+          </form>
+
+          <div className="space-y-2">
+            {filieres.map((f) => (
+              <div key={f.id} className="border rounded p-3 bg-white hover:bg-gray-50">
+                {editingFiliere?.id === f.id ? (
+                  <form onSubmit={handleUpdateFiliere} className="space-y-2">
+                    <input
+                      type="text"
+                      value={editFiliereName}
+                      onChange={(e) => setEditFiliereName(e.target.value)}
+                      className="input-field w-full text-sm"
+                    />
+                    <div className="flex gap-1 justify-end">
+                      <button type="submit" className="btn-primary text-xs px-2 py-1">✓</button>
+                      <button type="button" onClick={() => setEditingFiliere(null)} className="btn-secondary text-xs px-2 py-1">✕</button>
+                    </div>
+                  </form>
+                ) : (
+                  <div>
+                    <p className="font-semibold text-sm">{f.name}</p>
+                    <div className="flex gap-1 mt-2 justify-end">
+                      <button onClick={() => handleEditFiliere(f)} className="text-xs bg-yellow-500 hover:bg-yellow-600 text-white px-2 py-1 rounded">✏️</button>
+                      <button onClick={() => handleDeleteFiliere(f.id)} className="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded">🗑️</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* MODULES */}
+        <div>
+          <h3 className="text-xl font-bold mb-4">🎓 Modules</h3>
+          
+          <form onSubmit={handleAddModule} className="mb-4 p-3 bg-gray-50 rounded border space-y-2">
+            <input
+              type="text"
+              placeholder="Nom du module"
+              value={newModuleName}
+              onChange={(e) => setNewModuleName(e.target.value)}
+              className="input-field w-full text-sm"
+              required
+            />
+            <select
+              value={newModuleFiliere}
+              onChange={(e) => setNewModuleFiliere(e.target.value)}
+              className="input-field w-full text-sm"
+              required
+            >
+              <option value="">-- Filière --</option>
+              {filieres.map((f) => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+            </select>
+            <button type="submit" className="btn-primary w-full text-sm">Ajouter</button>
+          </form>
+
+          <div className="space-y-2">
+            {modules.map((m) => (
+              <div key={m.id} className="border rounded p-3 bg-white hover:bg-gray-50">
+                {editingModule?.id === m.id ? (
+                  <form onSubmit={handleUpdateModule} className="space-y-2">
+                    <input
+                      type="text"
+                      value={editModuleName}
+                      onChange={(e) => setEditModuleName(e.target.value)}
+                      className="input-field w-full text-sm"
+                    />
+                    <select
+                      value={editModuleFiliere}
+                      onChange={(e) => setEditModuleFiliere(e.target.value)}
+                      className="input-field w-full text-sm"
+                    >
+                      {filieres.map((f) => (
+                        <option key={f.id} value={f.id}>{f.name}</option>
+                      ))}
+                    </select>
+                    <div className="flex gap-1 justify-end">
+                      <button type="submit" className="btn-primary text-xs px-2 py-1">✓</button>
+                      <button type="button" onClick={() => setEditingModule(null)} className="btn-secondary text-xs px-2 py-1">✕</button>
+                    </div>
+                  </form>
+                ) : (
+                  <div>
+                    <p className="font-semibold text-sm">{m.name}</p>
+                    <p className="text-xs text-gray-500">{filieres.find(f => f.id === m.filiereId)?.name}</p>
+                    <div className="flex gap-1 mt-2 justify-end">
+                      <button onClick={() => handleEditModule(m)} className="text-xs bg-yellow-500 hover:bg-yellow-600 text-white px-2 py-1 rounded">✏️</button>
+                      <button onClick={() => handleDeleteModule(m.id)} className="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded">🗑️</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* GROUPES */}
+        <div>
+          <h3 className="text-xl font-bold mb-4">👥 Groupes</h3>
+          
+          <form onSubmit={handleAddGroupe} className="mb-4 p-3 bg-gray-50 rounded border space-y-2">
+            <input
+              type="text"
+              placeholder="Nom du groupe"
+              value={newGroupeName}
+              onChange={(e) => setNewGroupeName(e.target.value)}
+              className="input-field w-full text-sm"
+              required
+            />
+            <select
+              value={newGroupeFiliere}
+              onChange={(e) => setNewGroupeFiliere(e.target.value)}
+              className="input-field w-full text-sm"
+              required
+            >
+              <option value="">-- Filière --</option>
+              {filieres.map((f) => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+            </select>
+            <button type="submit" className="btn-primary w-full text-sm">Ajouter</button>
+          </form>
+
+          <div className="space-y-2">
+            {groupes.map((g) => (
+              <div key={g.id} className="border rounded p-3 bg-white hover:bg-gray-50">
+                {editingGroupe?.id === g.id ? (
+                  <form onSubmit={handleUpdateGroupe} className="space-y-2">
+                    <input
+                      type="text"
+                      value={editGroupeName}
+                      onChange={(e) => setEditGroupeName(e.target.value)}
+                      className="input-field w-full text-sm"
+                    />
+                    <select
+                      value={editGroupeFiliere}
+                      onChange={(e) => setEditGroupeFiliere(e.target.value)}
+                      className="input-field w-full text-sm"
+                    >
+                      {filieres.map((f) => (
+                        <option key={f.id} value={f.id}>{f.name}</option>
+                      ))}
+                    </select>
+                    <div className="flex gap-1 justify-end">
+                      <button type="submit" className="btn-primary text-xs px-2 py-1">✓</button>
+                      <button type="button" onClick={() => setEditingGroupe(null)} className="btn-secondary text-xs px-2 py-1">✕</button>
+                    </div>
+                  </form>
+                ) : (
+                  <div>
+                    <p className="font-semibold text-sm">{g.name}</p>
+                    <p className="text-xs text-gray-500">{filieres.find(f => f.id === g.filiereId)?.name}</p>
+                    <div className="flex gap-1 mt-2 justify-end">
+                      <button onClick={() => handleEditGroupe(g)} className="text-xs bg-yellow-500 hover:bg-yellow-600 text-white px-2 py-1 rounded">✏️</button>
+                      <button onClick={() => handleDeleteGroupe(g.id)} className="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded">🗑️</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
