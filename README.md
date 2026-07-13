@@ -1,5 +1,5 @@
 # ClasseTrack - Système de Gestion des Absences
-
+ 
 ## 🚀 Recovery / First Run Guide
 
 ### Prérequis
